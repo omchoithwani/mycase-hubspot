@@ -14,6 +14,8 @@ import { HubSpotModule } from './hubspot/hubspot.module';
 import { MyCaseModule } from './mycase/mycase.module';
 import { QueueModule } from './queue/queue.module';
 import { SyncModule } from './sync/sync.module';
+import { FieldMappingModule } from './field-mapping/field-mapping.module';
+import { StageMappingModule } from './stage-mapping/stage-mapping.module';
 
 @Module({
   imports: [
@@ -77,6 +79,8 @@ import { SyncModule } from './sync/sync.module';
     HubSpotModule,
     MyCaseModule,
     SyncModule,
+    FieldMappingModule,
+    StageMappingModule,
     HealthModule,
   ],
 })

@@ -5,6 +5,8 @@ import { HubSpotClientService } from '../../hubspot/hubspot-client.service';
 import { MyCaseClientService } from '../../mycase/mycase-client.service';
 import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
+import { FieldMappingService } from '../../field-mapping/field-mapping.service';
+import { StageMappingService } from '../../stage-mapping/stage-mapping.service';
 import { McMatterInput } from '../../mycase/dto/matter.dto';
 
 @Injectable()
@@ -19,6 +21,8 @@ export class DealToMatterProcessor extends BaseProcessor {
     private readonly hubspot: HubSpotClientService,
     private readonly mycase: MyCaseClientService,
     private readonly syncRecords: SyncRecordService,
+    private readonly fieldMapping: FieldMappingService,
+    private readonly stageMapping: StageMappingService,
   ) {
     super();
   }
@@ -36,32 +40,46 @@ export class DealToMatterProcessor extends BaseProcessor {
 
     const props = deal.properties;
 
-    // Resolve linked MyCase client via the associated contact's mycase_client_id
-    // (Phase 4 will make this more robust; for now we look up via stored sync record)
-    const contactSyncRecord = await this.resolveLinkedClient(
+    // 2. Resolve linked MyCase client via HubSpot associations API
+    const mycaseClientId = await this.resolveLinkedClient(
       installationId,
       installation.hubspotPortalId,
       sourceId,
     );
 
-    if (!contactSyncRecord) {
+    if (!mycaseClientId) {
       return this.skip(
-        'No linked MyCase client found for this deal — sync the associated contact first',
+        'No linked MyCase client found — sync the associated contact first',
       );
     }
 
-    // 2. Build matter payload (Phase 4 replaces with FieldMappingService + StageMappingService)
+    // 3. Apply field mapping (replaces hardcoded mapping from Phase 3)
+    const mapped = await this.fieldMapping.applyMapping(
+      installationId,
+      'deal',
+      'hs_to_mc',
+      props as Record<string, unknown>,
+    );
+
+    // 4. Resolve deal stage → MyCase status
+    const mycaseStatus = props.dealstage && props.pipeline
+      ? await this.stageMapping.toMyCaseStatus(
+          installationId,
+          props.pipeline,
+          props.dealstage,
+        )
+      : null;
+
+    // 5. Compose final matter payload
     const matterData: McMatterInput = {
-      name: props.dealname ?? 'Untitled Matter',
-      client_id: contactSyncRecord,
-      status: 'Open', // Phase 4: resolve from StageMappingService
-      close_date: props.closedate
-        ? new Date(Number(props.closedate)).toISOString().split('T')[0]
-        : undefined,
-      rate: props.amount ? Math.round(parseFloat(props.amount) * 100) : undefined,
+      name: (mapped['name'] as string) ?? props.dealname ?? 'Untitled Matter',
+      client_id: mycaseClientId,
+      status: mycaseStatus ?? 'Open',
+      close_date: mapped['close_date'] as string | undefined,
+      rate: mapped['rate'] as number | undefined,
     };
 
-    // 3. Change detection
+    // 6. Change detection
     const existing = await this.syncRecords.findByHubSpotId(
       installationId,
       'deal',
@@ -71,7 +89,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       return this.skip('Payload unchanged since last sync');
     }
 
-    // 4. Create or update
+    // 7. Create or update
     let mycaseId = existing?.mycaseObjectId;
     let action: 'created' | 'updated';
 
@@ -85,7 +103,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       action = 'updated';
     }
 
-    // 5. Upsert sync record + write back matter ID to HubSpot
+    // 8. Upsert sync record + write back matter ID
     await this.syncRecords.upsert({
       installationId,
       objectType: 'deal',
@@ -109,14 +127,25 @@ export class DealToMatterProcessor extends BaseProcessor {
     return { success: true, action, destinationId: mycaseId };
   }
 
-  /** Find the MyCase client ID linked to any HubSpot contact associated with this deal */
   private async resolveLinkedClient(
     installationId: string,
-    _portalId: string,
-    _dealId: string,
+    portalId: string,
+    dealId: string,
   ): Promise<string | null> {
-    // Phase 4 will look up the deal's associated contacts via HubSpot associations API.
-    // For now, return null (deals without an associated synced contact are skipped).
+    const contactIds = await this.hubspot.getDealContactIds(
+      portalId,
+      installationId,
+      dealId,
+    );
+
+    for (const contactId of contactIds) {
+      const record = await this.syncRecords.findByHubSpotId(
+        installationId,
+        'contact',
+        contactId,
+      );
+      if (record) return record.mycaseObjectId;
+    }
     return null;
   }
 }

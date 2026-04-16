@@ -244,6 +244,26 @@ export class HubSpotClientService {
     );
   }
 
+  // ── Deal → Contact associations ──────────────────────────────────────────────
+
+  /** Returns HubSpot contact IDs associated with a deal (v4 associations API) */
+  async getDealContactIds(
+    portalId: string,
+    installationId: string,
+    dealId: string,
+  ): Promise<string[]> {
+    try {
+      const result = await this.call(portalId, installationId, (http) =>
+        http
+          .get(`/crm/v4/objects/deals/${dealId}/associations/contacts`)
+          .then((r) => r.data),
+      );
+      return (result as any).results?.map((r: any) => String(r.toObjectId)) ?? [];
+    } catch {
+      return [];
+    }
+  }
+
   // ── Associations ─────────────────────────────────────────────────────────────
 
   async associateNoteWithContact(

@@ -66,7 +66,7 @@ export class HubSpotPropertiesService {
     return response.data.results ?? [];
   }
 
-  private async fetchProperties(
+  async fetchProperties(
     portalId: string,
     installationId: string,
     objectType: string,
