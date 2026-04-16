@@ -23,6 +23,8 @@ import { FieldMappingModule } from '../field-mapping/field-mapping.module';
 import { StageMappingModule } from '../stage-mapping/stage-mapping.module';
 import { DuplicateModule } from '../duplicate/duplicate.module';
 import { SyncCriteriaModule } from '../sync-criteria/sync-criteria.module';
+import { ErrorLogModule } from '../error-log/error-log.module';
+import { SyncJobController } from './sync-job.controller';
 import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
 
 @Module({
@@ -39,7 +41,9 @@ import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
     StageMappingModule,
     DuplicateModule,
     SyncCriteriaModule,
+    ErrorLogModule,
   ],
+  controllers: [SyncJobController],
   providers: [
     SyncLockService,
     SyncRecordService,

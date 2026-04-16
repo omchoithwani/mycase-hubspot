@@ -11,18 +11,14 @@ import {
 import { SyncLockService } from './sync-lock.service';
 import { SyncJobService } from './sync-job.service';
 import { InstallationService } from '../installation/installation.service';
-import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
+import { ErrorLogService } from '../error-log/error-log.service';
+import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS, SYNC_JOB_OPTIONS } from '../queue/queue.constants';
 import { ContactToClientProcessor } from './processors/contact-to-client.processor';
 import { ClientToContactProcessor } from './processors/client-to-contact.processor';
 import { DealToMatterProcessor } from './processors/deal-to-matter.processor';
 import { MatterToDealProcessor } from './processors/matter-to-deal.processor';
 import { HsNoteToMcNoteProcessor } from './processors/hs-note-to-mc-note.processor';
 import { McNoteToHsNoteProcessor } from './processors/mc-note-to-hs-note.processor';
-
-/**
- * Processes jobs from BOTH sync queues.
- * Registered twice (once per queue name) via the @Processor decorator below.
- */
 
 @Injectable()
 @Processor(QUEUE_HS_TO_MC)
@@ -40,7 +36,7 @@ export class SyncHsToMcConsumer extends WorkerHost {
   @OnWorkerEvent('failed')
   onFailed(job: Job<SyncJobPayload>, error: Error) {
     this.logger.error(
-      `Job ${job.id} failed after ${job.attemptsMade} attempts: ${error.message}`,
+      `Job ${job.id} failed (attempt ${job.attemptsMade}/${job.opts.attempts ?? SYNC_JOB_OPTIONS.attempts}): ${error.message}`,
     );
   }
 }
@@ -61,20 +57,21 @@ export class SyncMcToHsConsumer extends WorkerHost {
   @OnWorkerEvent('failed')
   onFailed(job: Job<SyncJobPayload>, error: Error) {
     this.logger.error(
-      `Job ${job.id} failed after ${job.attemptsMade} attempts: ${error.message}`,
+      `Job ${job.id} failed (attempt ${job.attemptsMade}/${job.opts.attempts ?? SYNC_JOB_OPTIONS.attempts}): ${error.message}`,
     );
   }
 }
 
 /**
- * The actual orchestration logic — shared between both consumers.
+ * Shared orchestration logic — handles both sync queues.
  *
  * Flow:
- *   1. Verify installation is active + MyCase connected
+ *   1. Verify installation active + MyCase connected
  *   2. Acquire Redis sync lock (loop detection)
  *   3. Route to the correct processor
  *   4. Write sync_job audit record
- *   5. Release lock
+ *   5. On permanent failure → write to error_logs
+ *   6. Release lock
  */
 @Injectable()
 export class SyncOrchestrator {
@@ -85,6 +82,7 @@ export class SyncOrchestrator {
     private readonly installationService: InstallationService,
     private readonly lockService: SyncLockService,
     private readonly syncJobService: SyncJobService,
+    private readonly errorLogService: ErrorLogService,
     contactToClient: ContactToClientProcessor,
     clientToContact: ClientToContactProcessor,
     dealToMatter: DealToMatterProcessor,
@@ -107,15 +105,17 @@ export class SyncOrchestrator {
     const { installationId, objectType, direction, sourceId } = payload;
     payload.attempt = job.attemptsMade + 1;
 
+    const maxAttempts = job.opts.attempts ?? SYNC_JOB_OPTIONS.attempts;
+    const isFinalAttempt = payload.attempt >= maxAttempts;
+
     this.logger.debug(
-      `Processing job ${job.id}: ${direction} ${objectType}/${sourceId}`,
+      `Processing job ${job.id}: ${direction} ${objectType}/${sourceId} (attempt ${payload.attempt}/${maxAttempts})`,
     );
 
     // 1. Check installation is active
     const installation = await this.installationService.findById(installationId);
     if (!installation) {
-      const r = { success: false, action: 'skipped' as const, reason: 'Installation not found' };
-      return r;
+      return { success: false, action: 'skipped', reason: 'Installation not found' };
     }
     if (!installation.syncEnabled) {
       return { success: true, action: 'skipped', reason: 'Sync is disabled for this installation' };
@@ -124,7 +124,7 @@ export class SyncOrchestrator {
       return { success: true, action: 'skipped', reason: 'MyCase not yet connected' };
     }
 
-    // 2. Acquire sync lock — guards against loops and duplicate processing
+    // 2. Acquire sync lock
     const lockAcquired = await this.lockService.acquireLock(
       installationId,
       objectType as ObjectType,
@@ -164,15 +164,39 @@ export class SyncOrchestrator {
         await this.syncJobService.markSuccess(dbJob.id, result);
       } else {
         await this.syncJobService.markFailed(dbJob.id, result.reason ?? 'Unknown error');
+        // Processor returned failed (no exception thrown) — always log to error_logs
+        await this.errorLogService.log({
+          installationId,
+          syncJobId: dbJob.id,
+          objectType,
+          direction,
+          sourceId,
+          errorCode: result.errorCode ?? 'PROCESSOR_FAILED',
+          errorMessage: result.reason ?? 'Unknown error',
+        });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `Processor threw for ${direction}/${objectType}/${sourceId}: ${err.message}`,
-        err.stack,
+        `Processor threw for ${direction}/${objectType}/${sourceId}: ${msg}`,
+        err instanceof Error ? err.stack : undefined,
       );
-      await this.syncJobService.markFailed(dbJob.id, err.message);
-      // Re-throw so BullMQ applies retry backoff
-      throw err;
+      await this.syncJobService.markFailed(dbJob.id, msg);
+
+      // Write to error_logs only on final attempt to avoid noise
+      if (isFinalAttempt) {
+        await this.errorLogService.log({
+          installationId,
+          syncJobId: dbJob.id,
+          objectType,
+          direction,
+          sourceId,
+          errorCode: 'EXCEPTION',
+          errorMessage: msg,
+        });
+      }
+
+      throw err; // re-throw for BullMQ retry backoff
     } finally {
       await this.lockService.releaseLock(installationId, objectType as ObjectType, sourceId);
     }

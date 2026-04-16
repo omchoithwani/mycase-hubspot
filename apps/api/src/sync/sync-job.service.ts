@@ -26,10 +26,7 @@ export class SyncJobService {
     return this.repo.save(job);
   }
 
-  async markSuccess(
-    jobId: string,
-    result: SyncResult,
-  ): Promise<void> {
+  async markSuccess(jobId: string, result: SyncResult): Promise<void> {
     await this.repo.update(jobId, {
       status: 'success',
       destinationId: result.destinationId ?? null,
@@ -55,14 +52,34 @@ export class SyncJobService {
 
   async list(
     installationId: string,
-    limit = 50,
-    offset = 0,
+    options: { status?: string; objectType?: string; limit?: number; offset?: number } = {},
   ): Promise<[SyncJob[], number]> {
+    const where: Record<string, unknown> = { installationId };
+    if (options.status) where['status'] = options.status;
+    if (options.objectType) where['objectType'] = options.objectType;
+
     return this.repo.findAndCount({
-      where: { installationId },
+      where,
       order: { createdAt: 'DESC' },
-      take: limit,
-      skip: offset,
+      take: options.limit ?? 50,
+      skip: options.offset ?? 0,
     });
+  }
+
+  async stats(installationId: string): Promise<Record<string, number>> {
+    const rows = await this.repo
+      .createQueryBuilder('j')
+      .select('j.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('j.installation_id = :installationId', { installationId })
+      .groupBy('j.status')
+      .getRawMany();
+
+    const result: Record<string, number> = { success: 0, failed: 0, skipped: 0, processing: 0 };
+    for (const row of rows) {
+      result[row.status] = Number(row.count);
+    }
+    result['total'] = Object.values(result).reduce((a, b) => a + b, 0);
+    return result;
   }
 }

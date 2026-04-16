@@ -17,6 +17,7 @@ import { SyncModule } from './sync/sync.module';
 import { FieldMappingModule } from './field-mapping/field-mapping.module';
 import { StageMappingModule } from './stage-mapping/stage-mapping.module';
 import { SyncCriteriaModule } from './sync-criteria/sync-criteria.module';
+import { ErrorLogModule } from './error-log/error-log.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { SyncCriteriaModule } from './sync-criteria/sync-criteria.module';
     FieldMappingModule,
     StageMappingModule,
     SyncCriteriaModule,
+    ErrorLogModule,
     HealthModule,
   ],
 })
