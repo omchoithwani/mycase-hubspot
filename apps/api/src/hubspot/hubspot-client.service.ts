@@ -264,6 +264,55 @@ export class HubSpotClientService {
     }
   }
 
+  async associateDealWithContact(
+    portalId: string,
+    installationId: string,
+    dealId: string,
+    contactId: string,
+  ): Promise<void> {
+    await this.call(portalId, installationId, (http) =>
+      http.put(
+        `/crm/v3/objects/deals/${dealId}/associations/contacts/${contactId}/deal_to_contact`,
+      ),
+    );
+  }
+
+  /** Returns HubSpot contact IDs associated with a note (v4 associations API) */
+  async getNoteContactIds(
+    portalId: string,
+    installationId: string,
+    noteId: string,
+  ): Promise<string[]> {
+    try {
+      const result = await this.call(portalId, installationId, (http) =>
+        http
+          .get(`/crm/v4/objects/notes/${noteId}/associations/contacts`)
+          .then((r) => r.data),
+      );
+      return (result as any).results?.map((r: any) => String(r.toObjectId)) ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Returns HubSpot deal IDs associated with a note (v4 associations API) */
+  async getNoteDealIds(
+    portalId: string,
+    installationId: string,
+    noteId: string,
+  ): Promise<string[]> {
+    try {
+      const result = await this.call(portalId, installationId, (http) =>
+        http
+          .get(`/crm/v4/objects/notes/${noteId}/associations/deals`)
+          .then((r) => r.data),
+      );
+      return (result as any).results?.map((r: any) => String(r.toObjectId)) ?? [];
+    } catch {
+      return [];
+    }
+  }
+
   // ── Associations ─────────────────────────────────────────────────────────────
 
   async associateNoteWithContact(

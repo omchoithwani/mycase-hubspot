@@ -5,12 +5,8 @@ import { HubSpotClientService } from '../../hubspot/hubspot-client.service';
 import { MyCaseClientService } from '../../mycase/mycase-client.service';
 import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
+import { FieldMappingService } from '../../field-mapping/field-mapping.service';
 import { McNoteInput } from '../../mycase/dto/note.dto';
-
-/** Strips basic HTML tags from HubSpot note body */
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-}
 
 @Injectable()
 export class HsNoteToMcNoteProcessor extends BaseProcessor {
@@ -24,6 +20,7 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
     private readonly hubspot: HubSpotClientService,
     private readonly mycase: MyCaseClientService,
     private readonly syncRecords: SyncRecordService,
+    private readonly fieldMapping: FieldMappingService,
   ) {
     super();
   }
@@ -39,12 +36,20 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
       sourceId,
     );
 
-    const body = stripHtml(note.properties.hs_note_body ?? '');
+    // 2. Apply configured field mapping (html_strip transform applied to description)
+    const mapped = await this.fieldMapping.applyMapping(
+      installationId,
+      'note',
+      'hs_to_mc',
+      note.properties as Record<string, unknown>,
+    );
+
+    const body = (mapped['description'] as string) ?? '';
     if (!body) {
-      return this.skip('Note body is empty after stripping HTML');
+      return this.skip('Note body is empty after applying field mapping');
     }
 
-    // 2. Find which MyCase resource (client or matter) to attach to
+    // 3. Find which MyCase resource (client or matter) to attach to
     const { clientId, matterId } = await this.resolveAssociations(
       installationId,
       installation.hubspotPortalId,
@@ -57,7 +62,7 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
       );
     }
 
-    // 3. Build note payload
+    // 4. Build note payload
     const noteData: McNoteInput = {
       description: body,
       date: note.properties.hs_timestamp
@@ -67,7 +72,7 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
       matter_id: matterId ?? undefined,
     };
 
-    // 4. Change detection (hash of body)
+    // 5. Change detection
     const existing = await this.syncRecords.findByHubSpotId(
       installationId,
       'note',
@@ -77,7 +82,7 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
       return this.skip('Note body unchanged since last sync');
     }
 
-    // 5. Create or update
+    // 6. Create or update
     let mycaseId = existing?.mycaseObjectId;
     let action: 'created' | 'updated';
 
@@ -91,7 +96,7 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
       action = 'updated';
     }
 
-    // 6. Upsert sync record
+    // 7. Upsert sync record
     await this.syncRecords.upsert({
       installationId,
       objectType: 'note',
@@ -106,11 +111,24 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
 
   private async resolveAssociations(
     installationId: string,
-    _portalId: string,
-    _noteId: string,
+    portalId: string,
+    noteId: string,
   ): Promise<{ clientId: string | null; matterId: string | null }> {
-    // Phase 4 will query HubSpot associations API to find associated contacts/deals,
-    // then look up the corresponding MyCase client/matter IDs from sync_records.
-    return { clientId: null, matterId: null };
+    let clientId: string | null = null;
+    let matterId: string | null = null;
+
+    const contactIds = await this.hubspot.getNoteContactIds(portalId, installationId, noteId);
+    for (const contactId of contactIds) {
+      const record = await this.syncRecords.findByHubSpotId(installationId, 'contact', contactId);
+      if (record) { clientId = record.mycaseObjectId; break; }
+    }
+
+    const dealIds = await this.hubspot.getNoteDealIds(portalId, installationId, noteId);
+    for (const dealId of dealIds) {
+      const record = await this.syncRecords.findByHubSpotId(installationId, 'deal', dealId);
+      if (record) { matterId = record.mycaseObjectId; break; }
+    }
+
+    return { clientId, matterId };
   }
 }

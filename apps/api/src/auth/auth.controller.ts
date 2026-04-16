@@ -13,6 +13,9 @@ import { randomBytes } from 'crypto';
 import { HubSpotOAuthService } from './hubspot-oauth.service';
 import { MyCaseOAuthService } from './mycase-oauth.service';
 import { InstallationService } from '../installation/installation.service';
+import { HubSpotClientService } from '../hubspot/hubspot-client.service';
+import { FieldMappingService } from '../field-mapping/field-mapping.service';
+import { StageMappingService } from '../stage-mapping/stage-mapping.service';
 
 const CSRF_TTL_SECONDS = 600; // 10 minutes
 
@@ -24,6 +27,9 @@ export class AuthController {
     private readonly hubspotOAuth: HubSpotOAuthService,
     private readonly mycaseOAuth: MyCaseOAuthService,
     private readonly installationService: InstallationService,
+    private readonly hubspot: HubSpotClientService,
+    private readonly fieldMapping: FieldMappingService,
+    private readonly stageMapping: StageMappingService,
     private readonly config: ConfigService,
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
   ) {}
@@ -70,17 +76,25 @@ export class AuthController {
     });
 
     // Subscribe webhooks + create custom properties (best effort)
-    const rawToken = this.config.getOrThrow('HUBSPOT_CLIENT_SECRET'); // placeholder; real token from decrypt
     try {
-      const accessToken = await this.hubspotOAuth.getValidAccessToken(
-        installation,
-      );
+      const accessToken = await this.hubspotOAuth.getValidAccessToken(installation);
       await Promise.all([
         this.hubspotOAuth.subscribeWebhooks(accessToken),
         this.hubspotOAuth.createCustomProperties(accessToken),
       ]);
     } catch (err) {
       this.logger.warn('Non-fatal: webhook/property setup failed', err);
+    }
+
+    // Fetch pipelines and seed stage mappings (best effort)
+    try {
+      const pipelines = await this.hubspot.getPipelines(
+        installation.hubspotPortalId,
+        installation.id,
+      );
+      await this.stageMapping.seedDefaults(installation.id, pipelines);
+    } catch (err) {
+      this.logger.warn('Non-fatal: stage mapping seed failed', err);
     }
 
     // Store installation ID in Redis for the MyCase connect step
@@ -90,7 +104,7 @@ export class AuthController {
       installation.id,
     );
 
-    const webUrl = this.config.get<string>('NEXT_PUBLIC_API_URL') || 'http://localhost:3000';
+    const webUrl = this.config.get<string>('APP_URL') || 'http://localhost:3000';
     return {
       url: `${webUrl}/install/connect-mycase?portalId=${installation.hubspotPortalId}`,
     };
@@ -138,7 +152,14 @@ export class AuthController {
       expiresAt: tokens.expiresAt,
     });
 
-    const webUrl = this.config.get<string>('NEXT_PUBLIC_API_URL') || 'http://localhost:3000';
+    // Seed default field mappings now that both systems are connected (best effort)
+    try {
+      await this.fieldMapping.seedDefaults(installationId);
+    } catch (err) {
+      this.logger.warn('Non-fatal: field mapping seed failed', err);
+    }
+
+    const webUrl = this.config.get<string>('APP_URL') || 'http://localhost:3000';
     return { url: `${webUrl}/settings/field-mapping?installationId=${installationId}` };
   }
 }

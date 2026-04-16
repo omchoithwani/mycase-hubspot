@@ -5,6 +5,8 @@ import { HubSpotClientService } from '../../hubspot/hubspot-client.service';
 import { MyCaseClientService } from '../../mycase/mycase-client.service';
 import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
+import { FieldMappingService } from '../../field-mapping/field-mapping.service';
+import { StageMappingService } from '../../stage-mapping/stage-mapping.service';
 import { HsDealInput } from '../../hubspot/dto/deal.dto';
 
 @Injectable()
@@ -19,6 +21,8 @@ export class MatterToDealProcessor extends BaseProcessor {
     private readonly hubspot: HubSpotClientService,
     private readonly mycase: MyCaseClientService,
     private readonly syncRecords: SyncRecordService,
+    private readonly fieldMapping: FieldMappingService,
+    private readonly stageMapping: StageMappingService,
   ) {
     super();
   }
@@ -31,24 +35,38 @@ export class MatterToDealProcessor extends BaseProcessor {
     const matter = await this.mycase.getMatter(installationId, sourceId);
 
     // 2. Resolve linked HubSpot contact
-    const contactRecord = await this.syncRecords.findByMyCaseId(
+    const contactRecord = matter.client_id
+      ? await this.syncRecords.findByMyCaseId(installationId, 'contact', matter.client_id)
+      : null;
+
+    // 3. Apply configured field mapping
+    const mapped = await this.fieldMapping.applyMapping(
       installationId,
-      'contact',
-      matter.client_id,
+      'deal',
+      'mc_to_hs',
+      matter as unknown as Record<string, unknown>,
     );
 
-    // 3. Build deal payload (Phase 4 replaces with full mapping + stage resolution)
+    // 4. Resolve MyCase status → HubSpot stage
+    const hsStage = matter.status
+      ? await this.stageMapping.toHubSpotStage(installationId, matter.status)
+      : null;
+
+    // 5. Compose final deal payload
     const dealData: HsDealInput = {
-      dealname: matter.name,
+      dealname: (mapped['dealname'] as string) ?? matter.name,
       mycase_matter_id: sourceId,
-      // Phase 4: dealstage resolved from StageMappingService
-      closedate: matter.close_date
-        ? String(new Date(matter.close_date).getTime())
-        : undefined,
-      amount: matter.rate != null ? String(matter.rate / 100) : undefined,
+      closedate:
+        (mapped['closedate'] as string) ??
+        (matter.close_date ? String(new Date(matter.close_date).getTime()) : undefined),
+      amount:
+        (mapped['amount'] as string) ??
+        (matter.rate != null ? String(matter.rate / 100) : undefined),
+      dealstage: hsStage?.stageId,
+      pipeline: hsStage?.pipelineId,
     };
 
-    // 4. Change detection
+    // 6. Change detection
     const existing = await this.syncRecords.findByMyCaseId(
       installationId,
       'deal',
@@ -58,7 +76,7 @@ export class MatterToDealProcessor extends BaseProcessor {
       return this.skip('Payload unchanged since last sync');
     }
 
-    // 5. Create or update in HubSpot
+    // 7. Create or update in HubSpot
     let hubspotId = existing?.hubspotObjectId;
     let action: 'created' | 'updated';
 
@@ -71,12 +89,20 @@ export class MatterToDealProcessor extends BaseProcessor {
       hubspotId = created.id;
       action = 'created';
 
-      // Associate deal with HubSpot contact if we have the mapping
+      // Associate deal with HubSpot contact (best effort)
       if (contactRecord) {
-        // Phase 4 will add proper association via HubSpot associations API
-        this.logger.debug(
-          `TODO Phase 4: associate deal ${hubspotId} with contact ${contactRecord.hubspotObjectId}`,
-        );
+        try {
+          await this.hubspot.associateDealWithContact(
+            installation.hubspotPortalId,
+            installationId,
+            hubspotId,
+            contactRecord.hubspotObjectId,
+          );
+        } catch {
+          this.logger.warn(
+            `Could not associate deal ${hubspotId} with contact ${contactRecord.hubspotObjectId}`,
+          );
+        }
       }
 
       this.logger.log(`Created HubSpot deal ${hubspotId} from MyCase matter ${sourceId}`);
@@ -90,7 +116,7 @@ export class MatterToDealProcessor extends BaseProcessor {
       action = 'updated';
     }
 
-    // 6. Upsert sync record
+    // 8. Upsert sync record
     await this.syncRecords.upsert({
       installationId,
       objectType: 'deal',

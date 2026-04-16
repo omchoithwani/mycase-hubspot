@@ -23,7 +23,7 @@ export class FieldMappingService {
     installationId: string,
     objectType?: ObjectType,
   ): Promise<FieldMapping[]> {
-    const where: Partial<FieldMapping> = { installationId };
+    const where: { installationId: string; objectType?: ObjectType } = { installationId };
     if (objectType) where.objectType = objectType;
     return this.repo.find({ where, order: { objectType: 'ASC', hubspotField: 'ASC' } });
   }

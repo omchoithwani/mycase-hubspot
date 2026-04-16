@@ -5,6 +5,7 @@ import { HubSpotClientService } from '../../hubspot/hubspot-client.service';
 import { MyCaseClientService } from '../../mycase/mycase-client.service';
 import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
+import { FieldMappingService } from '../../field-mapping/field-mapping.service';
 import { HsContactInput } from '../../hubspot/dto/contact.dto';
 
 @Injectable()
@@ -19,6 +20,7 @@ export class ClientToContactProcessor extends BaseProcessor {
     private readonly hubspot: HubSpotClientService,
     private readonly mycase: MyCaseClientService,
     private readonly syncRecords: SyncRecordService,
+    private readonly fieldMapping: FieldMappingService,
   ) {
     super();
   }
@@ -30,17 +32,25 @@ export class ClientToContactProcessor extends BaseProcessor {
     // 1. Fetch full client from MyCase
     const client = await this.mycase.getClient(installationId, sourceId);
 
-    // 2. Build HubSpot contact payload
+    // 2. Apply configured field mapping
+    const mapped = await this.fieldMapping.applyMapping(
+      installationId,
+      'contact',
+      'mc_to_hs',
+      client as unknown as Record<string, unknown>,
+    );
+
+    // 3. Build HubSpot contact payload (mapped fields + required fallbacks)
     const contactData: HsContactInput = {
-      firstname: client.first_name,
-      lastname: client.last_name,
-      email: client.email,
-      phone: client.phone_numbers?.[0]?.number,
-      company: client.company_name,
+      firstname: (mapped['firstname'] as string) ?? client.first_name,
+      lastname: (mapped['lastname'] as string) ?? client.last_name,
+      email: (mapped['email'] as string) ?? client.email,
+      phone: (mapped['phone'] as string) ?? client.phone_numbers?.[0]?.number,
+      company: (mapped['company'] as string) ?? client.company_name,
       mycase_client_id: sourceId,
     };
 
-    // 3. Change detection
+    // 4. Change detection
     const existing = await this.syncRecords.findByMyCaseId(
       installationId,
       'contact',
@@ -50,7 +60,7 @@ export class ClientToContactProcessor extends BaseProcessor {
       return this.skip('Payload unchanged since last sync');
     }
 
-    // 4. Create or update in HubSpot
+    // 5. Create or update in HubSpot
     let hubspotId = existing?.hubspotObjectId;
     let action: 'created' | 'updated';
 
@@ -74,7 +84,7 @@ export class ClientToContactProcessor extends BaseProcessor {
       this.logger.log(`Updated HubSpot contact ${hubspotId} from MyCase client ${sourceId}`);
     }
 
-    // 5. Upsert sync record
+    // 6. Upsert sync record
     await this.syncRecords.upsert({
       installationId,
       objectType: 'contact',

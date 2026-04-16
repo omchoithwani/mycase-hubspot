@@ -19,6 +19,8 @@ import { McNoteToHsNoteProcessor } from './processors/mc-note-to-hs-note.process
 import { HubSpotModule } from '../hubspot/hubspot.module';
 import { MyCaseModule } from '../mycase/mycase.module';
 import { InstallationModule } from '../installation/installation.module';
+import { FieldMappingModule } from '../field-mapping/field-mapping.module';
+import { StageMappingModule } from '../stage-mapping/stage-mapping.module';
 import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
 
 @Module({
@@ -31,6 +33,8 @@ import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
     HubSpotModule,
     MyCaseModule,
     InstallationModule,
+    FieldMappingModule,
+    StageMappingModule,
   ],
   providers: [
     SyncLockService,

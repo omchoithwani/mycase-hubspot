@@ -5,6 +5,7 @@ import { HubSpotClientService } from '../../hubspot/hubspot-client.service';
 import { MyCaseClientService } from '../../mycase/mycase-client.service';
 import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
+import { FieldMappingService } from '../../field-mapping/field-mapping.service';
 import { HsNoteInput, HsNoteAssociation } from '../../hubspot/dto/note.dto';
 
 const HS_NOTE_CHAR_LIMIT = 65_536;
@@ -21,6 +22,7 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
     private readonly hubspot: HubSpotClientService,
     private readonly mycase: MyCaseClientService,
     private readonly syncRecords: SyncRecordService,
+    private readonly fieldMapping: FieldMappingService,
   ) {
     super();
   }
@@ -32,23 +34,31 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
     // 1. Fetch note from MyCase
     const note = await this.mycase.getNote(installationId, sourceId);
 
-    const body = note.description ?? '';
-    if (!body) {
+    const rawBody = note.description ?? '';
+    if (!rawBody) {
       return this.skip('MyCase note description is empty');
     }
 
-    // 2. Resolve HubSpot associations (contact/deal)
+    // 2. Apply configured field mapping
+    const mapped = await this.fieldMapping.applyMapping(
+      installationId,
+      'note',
+      'mc_to_hs',
+      note as unknown as Record<string, unknown>,
+    );
+
+    // 3. Resolve HubSpot associations (contact/deal)
     const associations = await this.resolveAssociations(installationId, note);
 
-    // 3. Build HubSpot note payload (truncate to 65,536 chars)
+    // 4. Build HubSpot note payload (truncate to 65,536 chars)
     const noteData: HsNoteInput = {
-      hs_note_body: body.slice(0, HS_NOTE_CHAR_LIMIT),
-      hs_timestamp: note.date
-        ? String(new Date(note.date).getTime())
-        : String(Date.now()),
+      hs_note_body: ((mapped['hs_note_body'] as string) ?? rawBody).slice(0, HS_NOTE_CHAR_LIMIT),
+      hs_timestamp:
+        (mapped['hs_timestamp'] as string) ??
+        (note.date ? String(new Date(note.date).getTime()) : String(Date.now())),
     };
 
-    // 4. Change detection
+    // 5. Change detection
     const existing = await this.syncRecords.findByMyCaseId(
       installationId,
       'note',
@@ -58,7 +68,7 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
       return this.skip('Note body unchanged since last sync');
     }
 
-    // 5. Create or update in HubSpot
+    // 6. Create or update in HubSpot
     let hubspotId = existing?.hubspotObjectId;
     let action: 'created' | 'updated';
 
@@ -82,7 +92,7 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
       action = 'updated';
     }
 
-    // 6. Upsert sync record
+    // 7. Upsert sync record
     await this.syncRecords.upsert({
       installationId,
       objectType: 'note',
@@ -110,12 +120,7 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
       if (contactRecord) {
         associations.push({
           to: { id: contactRecord.hubspotObjectId },
-          types: [
-            {
-              associationCategory: 'HUBSPOT_DEFINED',
-              associationTypeId: 202, // note_to_contact
-            },
-          ],
+          types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }],
         });
       }
     }
@@ -129,12 +134,7 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
       if (dealRecord) {
         associations.push({
           to: { id: dealRecord.hubspotObjectId },
-          types: [
-            {
-              associationCategory: 'HUBSPOT_DEFINED',
-              associationTypeId: 214, // note_to_deal
-            },
-          ],
+          types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }],
         });
       }
     }
