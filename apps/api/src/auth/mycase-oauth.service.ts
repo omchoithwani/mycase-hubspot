@@ -1,0 +1,110 @@
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
+import { TokenStoreService } from './token-store.service';
+import { InstallationService } from '../installation/installation.service';
+import { Installation } from '@mycase-hubspot/db';
+
+const MYCASE_AUTH_URL = 'https://app.mycase.com/oauth/authorize';
+const MYCASE_TOKEN_URL = 'https://app.mycase.com/oauth/token';
+
+@Injectable()
+export class MyCaseOAuthService {
+  private readonly logger = new Logger(MyCaseOAuthService.name);
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly tokenStore: TokenStoreService,
+    private readonly installationService: InstallationService,
+  ) {}
+
+  buildAuthUrl(state: string): string {
+    const params = new URLSearchParams({
+      client_id: this.config.getOrThrow('MYCASE_CLIENT_ID'),
+      redirect_uri: this.config.getOrThrow('MYCASE_REDIRECT_URI'),
+      response_type: 'code',
+      state,
+    });
+    return `${MYCASE_AUTH_URL}?${params.toString()}`;
+  }
+
+  async exchangeCode(code: string): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: Date;
+  }> {
+    const response = await axios.post(
+      MYCASE_TOKEN_URL,
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: this.config.getOrThrow('MYCASE_CLIENT_ID'),
+        client_secret: this.config.getOrThrow('MYCASE_CLIENT_SECRET'),
+        redirect_uri: this.config.getOrThrow('MYCASE_REDIRECT_URI'),
+        code,
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+    );
+
+    const { access_token, refresh_token, expires_in } = response.data;
+    const expiresAt = new Date(
+      Date.now() + (expires_in || 3600) * 1000,
+    );
+
+    return {
+      accessToken: this.tokenStore.encrypt(access_token),
+      refreshToken: this.tokenStore.encrypt(refresh_token),
+      expiresAt,
+    };
+  }
+
+  async refreshTokens(installation: Installation): Promise<Installation> {
+    try {
+      const refreshToken = this.tokenStore.decrypt(
+        installation.mycaseRefreshToken!,
+      );
+
+      const response = await axios.post(
+        MYCASE_TOKEN_URL,
+        new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: this.config.getOrThrow('MYCASE_CLIENT_ID'),
+          client_secret: this.config.getOrThrow('MYCASE_CLIENT_SECRET'),
+          refresh_token: refreshToken,
+        }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+      );
+
+      const { access_token, refresh_token, expires_in } = response.data;
+      const expiresAt = new Date(
+        Date.now() + (expires_in || 3600) * 1000,
+      );
+
+      return this.installationService.updateMyCaseTokens(installation.id, {
+        accessToken: this.tokenStore.encrypt(access_token),
+        refreshToken: this.tokenStore.encrypt(refresh_token),
+        expiresAt,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to refresh MyCase token for installation ${installation.id}`,
+        err,
+      );
+      throw new UnauthorizedException('MyCase token refresh failed');
+    }
+  }
+
+  async getValidAccessToken(installation: Installation): Promise<string> {
+    if (!installation.mycaseAccessToken || !installation.mycaseConnected) {
+      throw new UnauthorizedException('MyCase not connected');
+    }
+
+    const expiresAt = installation.mycaseTokenExpiresAt;
+    const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
+
+    if (expiresAt && expiresAt < fiveMinutesFromNow) {
+      installation = await this.refreshTokens(installation);
+    }
+
+    return this.tokenStore.decrypt(installation.mycaseAccessToken!);
+  }
+}
