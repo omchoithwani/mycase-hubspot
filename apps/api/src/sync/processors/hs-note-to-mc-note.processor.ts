@@ -6,6 +6,7 @@ import { MyCaseClientService } from '../../mycase/mycase-client.service';
 import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
 import { FieldMappingService } from '../../field-mapping/field-mapping.service';
+import { SyncCriteriaService } from '../../sync-criteria/sync-criteria.service';
 import { McNoteInput } from '../../mycase/dto/note.dto';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
     private readonly mycase: MyCaseClientService,
     private readonly syncRecords: SyncRecordService,
     private readonly fieldMapping: FieldMappingService,
+    private readonly syncCriteria: SyncCriteriaService,
   ) {
     super();
   }
@@ -36,7 +38,16 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
       sourceId,
     );
 
-    // 2. Apply configured field mapping (html_strip transform applied to description)
+    // 2. Evaluate sync criteria
+    const eligible = await this.syncCriteria.evaluate(
+      installationId,
+      'note',
+      'hubspot',
+      note.properties as Record<string, unknown>,
+    );
+    if (!eligible) return this.skip('Record does not meet sync criteria');
+
+    // 3. Apply configured field mapping (html_strip transform applied to description)
     const mapped = await this.fieldMapping.applyMapping(
       installationId,
       'note',

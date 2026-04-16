@@ -21,6 +21,8 @@ import { MyCaseModule } from '../mycase/mycase.module';
 import { InstallationModule } from '../installation/installation.module';
 import { FieldMappingModule } from '../field-mapping/field-mapping.module';
 import { StageMappingModule } from '../stage-mapping/stage-mapping.module';
+import { DuplicateModule } from '../duplicate/duplicate.module';
+import { SyncCriteriaModule } from '../sync-criteria/sync-criteria.module';
 import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
 
 @Module({
@@ -35,6 +37,8 @@ import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
     InstallationModule,
     FieldMappingModule,
     StageMappingModule,
+    DuplicateModule,
+    SyncCriteriaModule,
   ],
   providers: [
     SyncLockService,

@@ -6,6 +6,7 @@ import { MyCaseClientService } from '../../mycase/mycase-client.service';
 import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
 import { FieldMappingService } from '../../field-mapping/field-mapping.service';
+import { SyncCriteriaService } from '../../sync-criteria/sync-criteria.service';
 import { HsNoteInput, HsNoteAssociation } from '../../hubspot/dto/note.dto';
 
 const HS_NOTE_CHAR_LIMIT = 65_536;
@@ -23,6 +24,7 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
     private readonly mycase: MyCaseClientService,
     private readonly syncRecords: SyncRecordService,
     private readonly fieldMapping: FieldMappingService,
+    private readonly syncCriteria: SyncCriteriaService,
   ) {
     super();
   }
@@ -39,7 +41,16 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
       return this.skip('MyCase note description is empty');
     }
 
-    // 2. Apply configured field mapping
+    // 2. Evaluate sync criteria
+    const eligible = await this.syncCriteria.evaluate(
+      installationId,
+      'note',
+      'mycase',
+      note as unknown as Record<string, unknown>,
+    );
+    if (!eligible) return this.skip('Record does not meet sync criteria');
+
+    // 3. Apply configured field mapping
     const mapped = await this.fieldMapping.applyMapping(
       installationId,
       'note',

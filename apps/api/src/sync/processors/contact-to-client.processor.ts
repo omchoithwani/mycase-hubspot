@@ -6,6 +6,8 @@ import { MyCaseClientService } from '../../mycase/mycase-client.service';
 import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
 import { FieldMappingService } from '../../field-mapping/field-mapping.service';
+import { DuplicateDetectorService } from '../../duplicate/duplicate-detector.service';
+import { SyncCriteriaService } from '../../sync-criteria/sync-criteria.service';
 import { McClientInput } from '../../mycase/dto/client.dto';
 
 @Injectable()
@@ -21,6 +23,8 @@ export class ContactToClientProcessor extends BaseProcessor {
     private readonly mycase: MyCaseClientService,
     private readonly syncRecords: SyncRecordService,
     private readonly fieldMapping: FieldMappingService,
+    private readonly duplicateDetector: DuplicateDetectorService,
+    private readonly syncCriteria: SyncCriteriaService,
   ) {
     super();
   }
@@ -36,7 +40,16 @@ export class ContactToClientProcessor extends BaseProcessor {
       sourceId,
     );
 
-    // 2. Apply configured field mapping
+    // 2. Evaluate sync criteria
+    const eligible = await this.syncCriteria.evaluate(
+      installationId,
+      'contact',
+      'hubspot',
+      contact.properties as Record<string, unknown>,
+    );
+    if (!eligible) return this.skip('Record does not meet sync criteria');
+
+    // 3. Apply configured field mapping
     const mapped = await this.fieldMapping.applyMapping(
       installationId,
       'contact',
@@ -44,7 +57,7 @@ export class ContactToClientProcessor extends BaseProcessor {
       contact.properties as Record<string, unknown>,
     );
 
-    // 3. Build MyCase client (mapped fields + required fallbacks)
+    // 4. Build MyCase client (mapped fields + required fallbacks)
     const clientData: McClientInput = {
       first_name: (mapped['first_name'] as string) ?? contact.properties.firstname ?? '',
       last_name: (mapped['last_name'] as string) ?? contact.properties.lastname ?? '',
@@ -58,7 +71,7 @@ export class ContactToClientProcessor extends BaseProcessor {
       company_name: (mapped['company_name'] as string) ?? contact.properties.company,
     };
 
-    // 4. Change detection
+    // 5. Change detection
     const existing = await this.syncRecords.findByHubSpotId(
       installationId,
       'contact',
@@ -68,11 +81,42 @@ export class ContactToClientProcessor extends BaseProcessor {
       return this.skip('Payload unchanged since last sync');
     }
 
-    // 5. Create or update
+    // 6. Duplicate detection (create path only)
     let mycaseId = existing?.mycaseObjectId;
     let action: 'created' | 'updated';
 
     if (!mycaseId) {
+      const dupResult = await this.duplicateDetector.findExistingContact(
+        installationId,
+        installation.hubspotPortalId,
+        'hs_to_mc',
+        {
+          email: clientData.email,
+          firstName: clientData.first_name,
+          lastName: clientData.last_name,
+          phone: clientData.phone_numbers?.[0]?.number,
+        },
+      );
+
+      if (dupResult.ambiguous) {
+        return this.failed('DUPLICATE_AMBIGUOUS', 'Ambiguous duplicate — manual review required');
+      }
+
+      if (dupResult.existingId) {
+        this.logger.log(
+          `Linked contact ${sourceId} to existing MyCase client ${dupResult.existingId} (${dupResult.confidence} match)`,
+        );
+        await this.syncRecords.upsert({
+          installationId,
+          objectType: 'contact',
+          hubspotObjectId: sourceId,
+          mycaseObjectId: dupResult.existingId,
+          payload: clientData as any,
+          direction: 'hs_to_mc',
+        });
+        return this.skip(`Linked to existing MyCase client (${dupResult.confidence} match)`);
+      }
+
       const created = await this.mycase.createClient(installationId, clientData);
       mycaseId = created.id;
       action = 'created';
@@ -82,7 +126,7 @@ export class ContactToClientProcessor extends BaseProcessor {
       action = 'updated';
     }
 
-    // 6. Upsert sync record
+    // 7. Upsert sync record
     await this.syncRecords.upsert({
       installationId,
       objectType: 'contact',
@@ -92,7 +136,7 @@ export class ContactToClientProcessor extends BaseProcessor {
       direction: 'hs_to_mc',
     });
 
-    // 7. Write back mycase_client_id (best effort)
+    // 8. Write back mycase_client_id (best effort)
     try {
       await this.hubspot.updateContact(
         installation.hubspotPortalId,

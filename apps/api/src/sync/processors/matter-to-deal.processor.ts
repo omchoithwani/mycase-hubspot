@@ -7,6 +7,8 @@ import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
 import { FieldMappingService } from '../../field-mapping/field-mapping.service';
 import { StageMappingService } from '../../stage-mapping/stage-mapping.service';
+import { DuplicateDetectorService } from '../../duplicate/duplicate-detector.service';
+import { SyncCriteriaService } from '../../sync-criteria/sync-criteria.service';
 import { HsDealInput } from '../../hubspot/dto/deal.dto';
 
 @Injectable()
@@ -23,6 +25,8 @@ export class MatterToDealProcessor extends BaseProcessor {
     private readonly syncRecords: SyncRecordService,
     private readonly fieldMapping: FieldMappingService,
     private readonly stageMapping: StageMappingService,
+    private readonly duplicateDetector: DuplicateDetectorService,
+    private readonly syncCriteria: SyncCriteriaService,
   ) {
     super();
   }
@@ -34,12 +38,21 @@ export class MatterToDealProcessor extends BaseProcessor {
     // 1. Fetch matter from MyCase
     const matter = await this.mycase.getMatter(installationId, sourceId);
 
-    // 2. Resolve linked HubSpot contact
+    // 2. Evaluate sync criteria
+    const eligible = await this.syncCriteria.evaluate(
+      installationId,
+      'deal',
+      'mycase',
+      matter as unknown as Record<string, unknown>,
+    );
+    if (!eligible) return this.skip('Record does not meet sync criteria');
+
+    // 3. Resolve linked HubSpot contact
     const contactRecord = matter.client_id
       ? await this.syncRecords.findByMyCaseId(installationId, 'contact', matter.client_id)
       : null;
 
-    // 3. Apply configured field mapping
+    // 4. Apply configured field mapping
     const mapped = await this.fieldMapping.applyMapping(
       installationId,
       'deal',
@@ -47,12 +60,12 @@ export class MatterToDealProcessor extends BaseProcessor {
       matter as unknown as Record<string, unknown>,
     );
 
-    // 4. Resolve MyCase status → HubSpot stage
+    // 5. Resolve MyCase status → HubSpot stage
     const hsStage = matter.status
       ? await this.stageMapping.toHubSpotStage(installationId, matter.status)
       : null;
 
-    // 5. Compose final deal payload
+    // 6. Compose final deal payload
     const dealData: HsDealInput = {
       dealname: (mapped['dealname'] as string) ?? matter.name,
       mycase_matter_id: sourceId,
@@ -66,7 +79,7 @@ export class MatterToDealProcessor extends BaseProcessor {
       pipeline: hsStage?.pipelineId,
     };
 
-    // 6. Change detection
+    // 7. Change detection
     const existing = await this.syncRecords.findByMyCaseId(
       installationId,
       'deal',
@@ -76,11 +89,36 @@ export class MatterToDealProcessor extends BaseProcessor {
       return this.skip('Payload unchanged since last sync');
     }
 
-    // 7. Create or update in HubSpot
+    // 8. Duplicate detection (create path only)
     let hubspotId = existing?.hubspotObjectId;
     let action: 'created' | 'updated';
 
     if (!hubspotId) {
+      const dupResult = await this.duplicateDetector.findExistingDeal(
+        installationId,
+        installation.hubspotPortalId,
+        'mc_to_hs',
+        {
+          name: dealData.dealname ?? matter.name,
+          linkedContactHsId: contactRecord?.hubspotObjectId,
+        },
+      );
+
+      if (dupResult.existingId) {
+        this.logger.log(
+          `Linked matter ${sourceId} to existing HubSpot deal ${dupResult.existingId} (${dupResult.confidence} match)`,
+        );
+        await this.syncRecords.upsert({
+          installationId,
+          objectType: 'deal',
+          hubspotObjectId: dupResult.existingId,
+          mycaseObjectId: sourceId,
+          payload: dealData as any,
+          direction: 'mc_to_hs',
+        });
+        return this.skip(`Linked to existing HubSpot deal (${dupResult.confidence} match)`);
+      }
+
       const created = await this.hubspot.createDeal(
         installation.hubspotPortalId,
         installationId,
@@ -116,7 +154,7 @@ export class MatterToDealProcessor extends BaseProcessor {
       action = 'updated';
     }
 
-    // 8. Upsert sync record
+    // 9. Upsert sync record
     await this.syncRecords.upsert({
       installationId,
       objectType: 'deal',

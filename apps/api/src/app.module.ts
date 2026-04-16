@@ -16,6 +16,7 @@ import { QueueModule } from './queue/queue.module';
 import { SyncModule } from './sync/sync.module';
 import { FieldMappingModule } from './field-mapping/field-mapping.module';
 import { StageMappingModule } from './stage-mapping/stage-mapping.module';
+import { SyncCriteriaModule } from './sync-criteria/sync-criteria.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { StageMappingModule } from './stage-mapping/stage-mapping.module';
     SyncModule,
     FieldMappingModule,
     StageMappingModule,
+    SyncCriteriaModule,
     HealthModule,
   ],
 })
