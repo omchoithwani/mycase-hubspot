@@ -10,6 +10,8 @@ import { AuthModule } from './auth/auth.module';
 import { InstallationModule } from './installation/installation.module';
 import { HealthModule } from './health/health.module';
 import { RedisModule } from './common/redis.module';
+import { HubSpotModule } from './hubspot/hubspot.module';
+import { MyCaseModule } from './mycase/mycase.module';
 
 @Module({
   imports: [
@@ -69,6 +71,8 @@ import { RedisModule } from './common/redis.module';
     RedisModule,
     AuthModule,
     InstallationModule,
+    HubSpotModule,
+    MyCaseModule,
     HealthModule,
   ],
 })
