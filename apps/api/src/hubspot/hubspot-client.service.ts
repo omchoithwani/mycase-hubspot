@@ -341,6 +341,50 @@ export class HubSpotClientService {
     );
   }
 
+  // ── Paginated list (for initial sync) ────────────────────────────────────────
+
+  async listContactsPage(
+    portalId: string,
+    installationId: string,
+    after?: string,
+  ): Promise<{ results: HsContact[]; nextAfter?: string }> {
+    return this.call(portalId, installationId, (http) =>
+      http
+        .get('/crm/v3/objects/contacts', {
+          params: {
+            limit: 100,
+            after,
+            properties: 'email,firstname,lastname,phone,company,lifecyclestage,mycase_client_id',
+          },
+        })
+        .then((r) => ({
+          results: r.data.results ?? [],
+          nextAfter: r.data.paging?.next?.after as string | undefined,
+        })),
+    );
+  }
+
+  async listDealsPage(
+    portalId: string,
+    installationId: string,
+    after?: string,
+  ): Promise<{ results: HsDeal[]; nextAfter?: string }> {
+    return this.call(portalId, installationId, (http) =>
+      http
+        .get('/crm/v3/objects/deals', {
+          params: {
+            limit: 100,
+            after,
+            properties: 'dealname,amount,closedate,dealstage,pipeline,mycase_matter_id',
+          },
+        })
+        .then((r) => ({
+          results: r.data.results ?? [],
+          nextAfter: r.data.paging?.next?.after as string | undefined,
+        })),
+    );
+  }
+
   // ── Pipelines ────────────────────────────────────────────────────────────────
 
   async getPipelines(

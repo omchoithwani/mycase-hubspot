@@ -25,6 +25,7 @@ import { DuplicateModule } from '../duplicate/duplicate.module';
 import { SyncCriteriaModule } from '../sync-criteria/sync-criteria.module';
 import { ErrorLogModule } from '../error-log/error-log.module';
 import { SyncJobController } from './sync-job.controller';
+import { InitialSyncService } from './initial-sync.service';
 import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
 
 @Module({
@@ -59,7 +60,8 @@ import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
     SyncOrchestrator,
     SyncHsToMcConsumer,
     SyncMcToHsConsumer,
+    InitialSyncService,
   ],
-  exports: [SyncRecordService, SyncJobService],
+  exports: [SyncRecordService, SyncJobService, InitialSyncService],
 })
 export class SyncModule {}

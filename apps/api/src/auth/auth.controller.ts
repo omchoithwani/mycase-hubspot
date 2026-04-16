@@ -16,6 +16,7 @@ import { InstallationService } from '../installation/installation.service';
 import { HubSpotClientService } from '../hubspot/hubspot-client.service';
 import { FieldMappingService } from '../field-mapping/field-mapping.service';
 import { StageMappingService } from '../stage-mapping/stage-mapping.service';
+import { InitialSyncService } from '../sync/initial-sync.service';
 
 const CSRF_TTL_SECONDS = 600; // 10 minutes
 
@@ -30,6 +31,7 @@ export class AuthController {
     private readonly hubspot: HubSpotClientService,
     private readonly fieldMapping: FieldMappingService,
     private readonly stageMapping: StageMappingService,
+    private readonly initialSync: InitialSyncService,
     private readonly config: ConfigService,
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
   ) {}
@@ -105,9 +107,7 @@ export class AuthController {
     );
 
     const webUrl = this.config.get<string>('APP_URL') || 'http://localhost:3000';
-    return {
-      url: `${webUrl}/install/connect-mycase?portalId=${installation.hubspotPortalId}`,
-    };
+    return { url: `${webUrl}/install?installationId=${installation.id}` };
   }
 
   // ─── MyCase Connect ───────────────────────────────────────────────────────
@@ -159,7 +159,12 @@ export class AuthController {
       this.logger.warn('Non-fatal: field mapping seed failed', err);
     }
 
+    // Trigger initial full sync in the background (best effort)
+    this.initialSync.triggerForInstallation(installationId).catch((err) => {
+      this.logger.warn('Non-fatal: initial sync trigger failed', err);
+    });
+
     const webUrl = this.config.get<string>('APP_URL') || 'http://localhost:3000';
-    return { url: `${webUrl}/settings/field-mapping?installationId=${installationId}` };
+    return { url: `${webUrl}/install?installationId=${installationId}&step=done` };
   }
 }
