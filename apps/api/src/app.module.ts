@@ -12,6 +12,8 @@ import { HealthModule } from './health/health.module';
 import { RedisModule } from './common/redis.module';
 import { HubSpotModule } from './hubspot/hubspot.module';
 import { MyCaseModule } from './mycase/mycase.module';
+import { QueueModule } from './queue/queue.module';
+import { SyncModule } from './sync/sync.module';
 
 @Module({
   imports: [
@@ -69,10 +71,12 @@ import { MyCaseModule } from './mycase/mycase.module';
     ScheduleModule.forRoot(),
 
     RedisModule,
+    QueueModule,
     AuthModule,
     InstallationModule,
     HubSpotModule,
     MyCaseModule,
+    SyncModule,
     HealthModule,
   ],
 })
