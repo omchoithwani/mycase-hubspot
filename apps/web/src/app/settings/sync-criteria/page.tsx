@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -63,7 +63,7 @@ function blankRule(): Omit<SyncCriteriaRule, 'id' | 'isActive'> {
   };
 }
 
-export default function SyncCriteriaPage() {
+function SyncCriteriaPageContent() {
   const params = useSearchParams();
   const installationId = params.get('installationId') ?? '';
 
@@ -489,5 +489,13 @@ export default function SyncCriteriaPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function SyncCriteriaPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">Loading…</div>}>
+      <SyncCriteriaPageContent />
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -44,7 +44,7 @@ function duration(start: string, end: string | null): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-export default function SyncHistoryPage() {
+function SyncHistoryPageContent() {
   const searchParams = useSearchParams();
   const installationId = searchParams.get('installationId') ?? '';
 
@@ -238,5 +238,13 @@ export default function SyncHistoryPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function SyncHistoryPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">Loading…</div>}>
+      <SyncHistoryPageContent />
+    </Suspense>
   );
 }

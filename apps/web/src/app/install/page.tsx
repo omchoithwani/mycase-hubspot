@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -12,7 +12,7 @@ interface Installation {
   syncEnabled: boolean;
 }
 
-export default function InstallPage() {
+function InstallPageContent() {
   const searchParams = useSearchParams();
   const installationId = searchParams.get('installationId') ?? '';
   const step = searchParams.get('step') ?? '';
@@ -162,5 +162,13 @@ function Step({
         ) : null}
       </div>
     </li>
+  );
+}
+
+export default function InstallPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">Loading…</div>}>
+      <InstallPageContent />
+    </Suspense>
   );
 }

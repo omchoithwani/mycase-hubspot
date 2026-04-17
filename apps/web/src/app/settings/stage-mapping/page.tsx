@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -27,7 +27,7 @@ interface StageMapping {
   direction: string;
 }
 
-export default function StageMappingPage() {
+function StageMappingPageContent() {
   const params = useSearchParams();
   const installationId = params.get('installationId') ?? '';
 
@@ -201,5 +201,13 @@ export default function StageMappingPage() {
         </table>
       )}
     </main>
+  );
+}
+
+export default function StageMappingPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">Loading…</div>}>
+      <StageMappingPageContent />
+    </Suspense>
   );
 }

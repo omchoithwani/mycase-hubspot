@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -29,7 +29,7 @@ const STAT_COLORS: Record<string, string> = {
   total: 'bg-blue-100 text-blue-700',
 };
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   const searchParams = useSearchParams();
   const installationId = searchParams.get('installationId') ?? '';
 
@@ -153,5 +153,13 @@ function NavCard({ href, title, description }: { href: string; title: string; de
       <h2 className="font-semibold mb-1">{title}</h2>
       <p className="text-sm text-gray-500">{description}</p>
     </Link>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">Loading…</div>}>
+      <DashboardPageContent />
+    </Suspense>
   );
 }

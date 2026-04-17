@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -20,7 +20,7 @@ interface ErrorLog {
 const OBJECT_TYPES = ['contact', 'deal', 'note'];
 const PAGE_SIZE = 20;
 
-export default function ErrorsPage() {
+function ErrorsPageContent() {
   const searchParams = useSearchParams();
   const installationId = searchParams.get('installationId') ?? '';
 
@@ -224,5 +224,13 @@ export default function ErrorsPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function ErrorsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">Loading…</div>}>
+      <ErrorsPageContent />
+    </Suspense>
   );
 }

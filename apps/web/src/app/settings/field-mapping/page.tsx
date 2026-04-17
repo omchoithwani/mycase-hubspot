@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -62,7 +62,7 @@ const BLANK_FORM = {
   transformConfig: '',
 };
 
-export default function FieldMappingPage() {
+function FieldMappingPageContent() {
   const params = useSearchParams();
   const installationId = params.get('installationId') ?? '';
 
@@ -409,5 +409,13 @@ export default function FieldMappingPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function FieldMappingPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">Loading…</div>}>
+      <FieldMappingPageContent />
+    </Suspense>
   );
 }
