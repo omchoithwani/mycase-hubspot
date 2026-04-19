@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "paths": {
+      "@mycase-hubspot/shared-types": ["../../packages/shared-types/dist"],
+      "@mycase-hubspot/db": ["../../packages/db/dist"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}
