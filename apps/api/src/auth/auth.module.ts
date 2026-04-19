@@ -11,7 +11,7 @@ import { StageMappingModule } from '../stage-mapping/stage-mapping.module';
 import { SyncModule } from '../sync/sync.module';
 
 @Module({
-  imports: [InstallationModule, RedisModule, forwardRef(() => HubSpotModule), FieldMappingModule, StageMappingModule, SyncModule],
+  imports: [InstallationModule, RedisModule, forwardRef(() => HubSpotModule), FieldMappingModule, StageMappingModule, forwardRef(() => SyncModule)],
   controllers: [AuthController],
   providers: [HubSpotOAuthService, MyCaseOAuthService, TokenStoreService],
   exports: [HubSpotOAuthService, MyCaseOAuthService, TokenStoreService],

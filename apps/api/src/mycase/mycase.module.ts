@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { PollingCursor } from '@mycase-hubspot/db';
@@ -13,7 +13,7 @@ import { QUEUE_MC_TO_HS } from '../queue/queue.constants';
   imports: [
     TypeOrmModule.forFeature([PollingCursor]),
     BullModule.registerQueue({ name: QUEUE_MC_TO_HS }),
-    AuthModule,
+    forwardRef(() => AuthModule),
     InstallationModule,
   ],
   controllers: [MyCaseWebhookController],
