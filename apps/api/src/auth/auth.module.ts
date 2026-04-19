@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { HubSpotOAuthService } from './hubspot-oauth.service';
 import { MyCaseOAuthService } from './mycase-oauth.service';
@@ -11,7 +11,7 @@ import { StageMappingModule } from '../stage-mapping/stage-mapping.module';
 import { SyncModule } from '../sync/sync.module';
 
 @Module({
-  imports: [InstallationModule, RedisModule, HubSpotModule, FieldMappingModule, StageMappingModule, SyncModule],
+  imports: [InstallationModule, RedisModule, forwardRef(() => HubSpotModule), FieldMappingModule, StageMappingModule, SyncModule],
   controllers: [AuthController],
   providers: [HubSpotOAuthService, MyCaseOAuthService, TokenStoreService],
   exports: [HubSpotOAuthService, MyCaseOAuthService, TokenStoreService],

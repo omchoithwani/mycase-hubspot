@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { HubSpotClientService } from './hubspot-client.service';
 import { HubSpotPropertiesService } from './hubspot-properties.service';
@@ -11,7 +11,7 @@ import { QUEUE_HS_TO_MC } from '../queue/queue.constants';
 
 @Module({
   imports: [
-    AuthModule,
+    forwardRef(() => AuthModule),
     InstallationModule,
     BullModule.registerQueue({ name: QUEUE_HS_TO_MC }),
   ],
