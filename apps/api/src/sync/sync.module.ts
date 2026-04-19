@@ -5,11 +5,8 @@ import { SyncRecord, SyncJob, PollingCursor } from '@mycase-hubspot/db';
 import { SyncLockService } from './sync-lock.service';
 import { SyncRecordService } from './sync-record.service';
 import { SyncJobService } from './sync-job.service';
-import {
-  SyncOrchestrator,
-  SyncHsToMcConsumer,
-  SyncMcToHsConsumer,
-} from './sync-job.consumer';
+import { SyncOrchestrator } from './sync-orchestrator.service';
+import { SyncHsToMcConsumer, SyncMcToHsConsumer } from './sync-job.consumer';
 import { ContactToClientProcessor } from './processors/contact-to-client.processor';
 import { ClientToContactProcessor } from './processors/client-to-contact.processor';
 import { DealToMatterProcessor } from './processors/deal-to-matter.processor';
