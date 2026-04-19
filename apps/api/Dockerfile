@@ -1,37 +1,46 @@
 FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
-FROM base AS deps
-WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY packages/shared-types/package.json ./packages/shared-types/
-COPY packages/db/package.json ./packages/db/
-COPY apps/api/package.json ./apps/api/
-RUN pnpm install --no-frozen-lockfile
-
+# ── builder ────────────────────────────────────────────────────────────────────
 FROM base AS builder
 WORKDIR /app
-# Copy source first, then overwrite node_modules with clean deps install
-COPY . .
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-# Compile packages/db to JS so the runner can require it without ts-node
-RUN apps/api/node_modules/.bin/tsc --project packages/db/tsconfig.json
-# Build the NestJS API from its own directory
-RUN cd apps/api && node_modules/.bin/nest build
 
+# Install dependencies (package manifests only — no source yet)
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/db/package.json           ./packages/db/
+COPY apps/api/package.json              ./apps/api/
+RUN pnpm install --no-frozen-lockfile
+
+# Copy source (selective — avoids accidentally picking up local node_modules/dist)
+COPY packages/ packages/
+COPY apps/api/ apps/api/
+
+# Compile workspace packages first (API depends on their JS output at runtime)
+RUN pnpm --filter @mycase-hubspot/shared-types run build
+RUN pnpm --filter @mycase-hubspot/db run build
+
+# Build the NestJS API
+RUN pnpm --filter @mycase-hubspot/api run build
+
+# ── runner ─────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+
+# Production dependency install
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/shared-types/package.json ./packages/shared-types/
-COPY packages/db/package.json ./packages/db/
-COPY apps/api/package.json ./apps/api/
+COPY packages/db/package.json           ./packages/db/
+COPY apps/api/package.json              ./apps/api/
 RUN pnpm install --no-frozen-lockfile --prod
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/packages/db/dist ./packages/db/dist
+
+# Copy compiled output from builder
+COPY --from=builder /app/apps/api/dist          ./apps/api/dist
+COPY --from=builder /app/packages/db/dist       ./packages/db/dist
+COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 
 EXPOSE 3001
 CMD ["node", "apps/api/dist/main"]
