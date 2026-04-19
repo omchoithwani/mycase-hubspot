@@ -29,6 +29,7 @@ import { ErrorLogModule } from './error-log/error-log.module';
           .default('development'),
         API_PORT: Joi.number().default(3001),
         APP_URL: Joi.string().required(),
+        WEB_URL: Joi.string().required(),
         DATABASE_URL: Joi.string().required(),
         REDIS_URL: Joi.string().required(),
         ENCRYPTION_KEY: Joi.string().length(64).required(),

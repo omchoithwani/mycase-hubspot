@@ -106,7 +106,7 @@ export class AuthController {
       installation.id,
     );
 
-    const webUrl = this.config.get<string>('APP_URL') || 'http://localhost:3000';
+    const webUrl = this.config.get<string>('WEB_URL') || 'http://localhost:3000';
     return { url: `${webUrl}/install?installationId=${installation.id}` };
   }
 
@@ -164,7 +164,7 @@ export class AuthController {
       this.logger.warn('Non-fatal: initial sync trigger failed', err);
     });
 
-    const webUrl = this.config.get<string>('APP_URL') || 'http://localhost:3000';
+    const webUrl = this.config.get<string>('WEB_URL') || 'http://localhost:3000';
     return { url: `${webUrl}/install?installationId=${installationId}&step=done` };
   }
 }
