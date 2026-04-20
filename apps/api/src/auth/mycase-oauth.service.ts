@@ -33,9 +33,12 @@ export class MyCaseOAuthService {
     refreshToken: string | null;
     expiresAt: Date;
   }> {
-    let response: Awaited<ReturnType<typeof axios.post>>;
     try {
-      response = await axios.post(
+      const response = await axios.post<{
+        access_token: string;
+        refresh_token?: string;
+        expires_in?: number;
+      }>(
         MYCASE_TOKEN_URL,
         new URLSearchParams({
           grant_type: 'authorization_code',
@@ -46,7 +49,27 @@ export class MyCaseOAuthService {
         }),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
       );
+
+      const { access_token, refresh_token, expires_in } = response.data;
+      this.logger.log(
+        `MyCase token response: access_token=${!!access_token}, refresh_token=${!!refresh_token}, expires_in=${expires_in}`,
+      );
+
+      if (!access_token) {
+        this.logger.error(
+          `MyCase token response missing access_token: ${JSON.stringify(response.data)}`,
+        );
+        throw new InternalServerErrorException('MyCase token response missing access_token');
+      }
+
+      const expiresAt = new Date(Date.now() + (expires_in || 3600) * 1000);
+      return {
+        accessToken: this.tokenStore.encrypt(access_token),
+        refreshToken: refresh_token ? this.tokenStore.encrypt(refresh_token) : null,
+        expiresAt,
+      };
     } catch (err) {
+      if (err instanceof InternalServerErrorException) throw err;
       const axiosErr = err as AxiosError;
       this.logger.error(
         `MyCase token exchange failed — status: ${axiosErr.response?.status}, body: ${JSON.stringify(axiosErr.response?.data)}`,
@@ -55,22 +78,6 @@ export class MyCaseOAuthService {
         `MyCase token exchange failed: ${axiosErr.response?.status ?? axiosErr.message}`,
       );
     }
-
-    const { access_token, refresh_token, expires_in } = response.data;
-    this.logger.log(`MyCase token response fields: access_token=${!!access_token}, refresh_token=${!!refresh_token}, expires_in=${expires_in}`);
-
-    if (!access_token) {
-      this.logger.error(`MyCase token response missing access_token: ${JSON.stringify(response.data)}`);
-      throw new InternalServerErrorException('MyCase token response missing access_token');
-    }
-
-    const expiresAt = new Date(Date.now() + (expires_in || 3600) * 1000);
-
-    return {
-      accessToken: this.tokenStore.encrypt(access_token),
-      refreshToken: refresh_token ? this.tokenStore.encrypt(refresh_token) : null,
-      expiresAt,
-    };
   }
 
   async refreshTokens(installation: Installation): Promise<Installation> {
