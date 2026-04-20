@@ -6,7 +6,7 @@ import { InstallationService } from '../installation/installation.service';
 import { Installation } from '@mycase-hubspot/db';
 
 const MYCASE_AUTH_URL = 'https://auth.mycase.com/login_sessions/new';
-const MYCASE_TOKEN_URL = 'https://app.mycase.com/oauth/token';
+const MYCASE_TOKEN_URL = 'https://auth.mycase.com/oauth/token';
 
 @Injectable()
 export class MyCaseOAuthService {
@@ -34,6 +34,10 @@ export class MyCaseOAuthService {
     expiresAt: Date;
   }> {
     try {
+      const clientId = this.config.getOrThrow<string>('MYCASE_CLIENT_ID');
+      const clientSecret = this.config.getOrThrow<string>('MYCASE_CLIENT_SECRET');
+      const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
       const response = await axios.post<{
         access_token: string;
         refresh_token?: string;
@@ -42,12 +46,15 @@ export class MyCaseOAuthService {
         MYCASE_TOKEN_URL,
         new URLSearchParams({
           grant_type: 'authorization_code',
-          client_id: this.config.getOrThrow('MYCASE_CLIENT_ID'),
-          client_secret: this.config.getOrThrow('MYCASE_CLIENT_SECRET'),
           redirect_uri: this.config.getOrThrow('MYCASE_REDIRECT_URI'),
           code,
         }),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Basic ${basicAuth}`,
+          },
+        },
       );
 
       const { access_token, refresh_token, expires_in } = response.data;
