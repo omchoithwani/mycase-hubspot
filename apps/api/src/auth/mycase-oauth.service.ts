@@ -82,7 +82,7 @@ export class MyCaseOAuthService {
         `MyCase token exchange failed — status: ${axiosErr.response?.status}, body: ${JSON.stringify(axiosErr.response?.data)}`,
       );
       throw new InternalServerErrorException(
-        `MyCase token exchange failed: ${axiosErr.response?.status ?? axiosErr.message}`,
+        `MyCase token exchange failed: status=${axiosErr.response?.status ?? axiosErr.message} body=${JSON.stringify(axiosErr.response?.data)}`,
       );
     }
   }
