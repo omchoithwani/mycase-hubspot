@@ -6,7 +6,7 @@ import { InstallationService } from '../installation/installation.service';
 import { Installation } from '@mycase-hubspot/db';
 
 const MYCASE_AUTH_URL = 'https://auth.mycase.com/login_sessions/new';
-const MYCASE_TOKEN_URL = 'https://app.mycase.com/api/v1/oauth/token';
+const MYCASE_TOKEN_URL = 'https://auth.mycase.com/tokens';
 
 @Injectable()
 export class MyCaseOAuthService {
@@ -34,27 +34,21 @@ export class MyCaseOAuthService {
     expiresAt: Date;
   }> {
     try {
-      const clientId = this.config.getOrThrow<string>('MYCASE_CLIENT_ID');
-      const clientSecret = this.config.getOrThrow<string>('MYCASE_CLIENT_SECRET');
-      const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-
       const response = await axios.post<{
         access_token: string;
         refresh_token?: string;
         expires_in?: number;
+        firm_uuid?: string;
       }>(
         MYCASE_TOKEN_URL,
-        new URLSearchParams({
+        {
           grant_type: 'authorization_code',
+          client_id: this.config.getOrThrow('MYCASE_CLIENT_ID'),
+          client_secret: this.config.getOrThrow('MYCASE_CLIENT_SECRET'),
           redirect_uri: this.config.getOrThrow('MYCASE_REDIRECT_URI'),
           code,
-        }),
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Basic ${basicAuth}`,
-          },
         },
+        { headers: { 'Content-Type': 'application/json' } },
       );
 
       const { access_token, refresh_token, expires_in } = response.data;
@@ -69,7 +63,7 @@ export class MyCaseOAuthService {
         throw new InternalServerErrorException('MyCase token response missing access_token');
       }
 
-      const expiresAt = new Date(Date.now() + (expires_in || 3600) * 1000);
+      const expiresAt = new Date(Date.now() + (expires_in || 86400) * 1000);
       return {
         accessToken: this.tokenStore.encrypt(access_token),
         refreshToken: refresh_token ? this.tokenStore.encrypt(refresh_token) : null,
@@ -93,25 +87,27 @@ export class MyCaseOAuthService {
         installation.mycaseRefreshToken!,
       );
 
-      const response = await axios.post(
+      const response = await axios.post<{
+        access_token: string;
+        refresh_token?: string;
+        expires_in?: number;
+      }>(
         MYCASE_TOKEN_URL,
-        new URLSearchParams({
+        {
           grant_type: 'refresh_token',
           client_id: this.config.getOrThrow('MYCASE_CLIENT_ID'),
           client_secret: this.config.getOrThrow('MYCASE_CLIENT_SECRET'),
           refresh_token: refreshToken,
-        }),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+        },
+        { headers: { 'Content-Type': 'application/json' } },
       );
 
       const { access_token, refresh_token, expires_in } = response.data;
-      const expiresAt = new Date(
-        Date.now() + (expires_in || 3600) * 1000,
-      );
+      const expiresAt = new Date(Date.now() + (expires_in || 86400) * 1000);
 
       return this.installationService.updateMyCaseTokens(installation.id, {
         accessToken: this.tokenStore.encrypt(access_token),
-        refreshToken: this.tokenStore.encrypt(refresh_token),
+        refreshToken: refresh_token ? this.tokenStore.encrypt(refresh_token) : null,
         expiresAt,
       });
     } catch (err) {

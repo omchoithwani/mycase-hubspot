@@ -153,7 +153,7 @@ export class AuthController {
 
     await this.installationService.updateMyCaseTokens(installationId, {
       accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken ?? '',
+      refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
     });
 
