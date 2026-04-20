@@ -8,10 +8,9 @@ import { RedisModule } from '../common/redis.module';
 import { HubSpotModule } from '../hubspot/hubspot.module';
 import { FieldMappingModule } from '../field-mapping/field-mapping.module';
 import { StageMappingModule } from '../stage-mapping/stage-mapping.module';
-import { SyncModule } from '../sync/sync.module';
 
 @Module({
-  imports: [InstallationModule, RedisModule, forwardRef(() => HubSpotModule), FieldMappingModule, StageMappingModule, forwardRef(() => SyncModule)],
+  imports: [InstallationModule, RedisModule, forwardRef(() => HubSpotModule), FieldMappingModule, StageMappingModule],
   controllers: [AuthController],
   providers: [HubSpotOAuthService, MyCaseOAuthService, TokenStoreService],
   exports: [HubSpotOAuthService, MyCaseOAuthService, TokenStoreService],

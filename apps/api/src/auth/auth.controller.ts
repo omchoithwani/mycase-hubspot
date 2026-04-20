@@ -16,7 +16,6 @@ import { InstallationService } from '../installation/installation.service';
 import { HubSpotClientService } from '../hubspot/hubspot-client.service';
 import { FieldMappingService } from '../field-mapping/field-mapping.service';
 import { StageMappingService } from '../stage-mapping/stage-mapping.service';
-import { InitialSyncService } from '../sync/initial-sync.service';
 
 const CSRF_TTL_SECONDS = 600; // 10 minutes
 
@@ -31,7 +30,6 @@ export class AuthController {
     private readonly hubspot: HubSpotClientService,
     private readonly fieldMapping: FieldMappingService,
     private readonly stageMapping: StageMappingService,
-    private readonly initialSync: InitialSyncService,
     private readonly config: ConfigService,
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
   ) {}
