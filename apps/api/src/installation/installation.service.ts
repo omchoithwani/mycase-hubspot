@@ -61,7 +61,7 @@ export class InstallationService {
   ): Promise<Installation> {
     const installation = await this.findByIdOrFail(id);
     installation.mycaseAccessToken = data.accessToken;
-    installation.mycaseRefreshToken = data.refreshToken ?? undefined;
+    installation.mycaseRefreshToken = data.refreshToken;
     installation.mycaseTokenExpiresAt = data.expiresAt;
     installation.mycaseConnected = true;
     if (data.baseUrl) {
