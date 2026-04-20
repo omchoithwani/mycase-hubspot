@@ -6,7 +6,7 @@ import { InstallationService } from '../installation/installation.service';
 import { Installation } from '@mycase-hubspot/db';
 
 const MYCASE_AUTH_URL = 'https://auth.mycase.com/login_sessions/new';
-const MYCASE_TOKEN_URL = 'https://auth.mycase.com/oauth/token';
+const MYCASE_TOKEN_URL = 'https://app.mycase.com/api/v1/oauth/token';
 
 @Injectable()
 export class MyCaseOAuthService {
