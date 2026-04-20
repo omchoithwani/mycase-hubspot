@@ -164,11 +164,6 @@ export class AuthController {
       this.logger.warn('Non-fatal: field mapping seed failed', err);
     }
 
-    // Trigger initial full sync in the background (best effort)
-    this.initialSync.triggerForInstallation(installationId).catch((err) => {
-      this.logger.warn('Non-fatal: initial sync trigger failed', err);
-    });
-
     const webUrl = this.config.get<string>('WEB_URL') || 'http://localhost:3000';
     return { url: `${webUrl}/install?installationId=${installationId}&step=done` };
   }

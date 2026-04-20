@@ -40,6 +40,7 @@ export class InstallationService {
         hubspotAccessToken: data.accessToken,
         hubspotRefreshToken: data.refreshToken,
         hubspotTokenExpiresAt: data.expiresAt,
+        syncEnabled: false,
       });
     } else {
       installation.hubspotAccessToken = data.accessToken;

@@ -1,6 +1,6 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { TokenStoreService } from './token-store.service';
 import { InstallationService } from '../installation/installation.service';
 import { Installation } from '@mycase-hubspot/db';
@@ -35,27 +35,37 @@ export class HubSpotOAuthService {
     expiresAt: Date;
     portalId: string;
   }> {
-    const response = await axios.post(
-      HS_TOKEN_URL,
-      new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: this.config.getOrThrow('HUBSPOT_CLIENT_ID'),
-        client_secret: this.config.getOrThrow('HUBSPOT_CLIENT_SECRET'),
-        redirect_uri: `${this.config.getOrThrow('APP_URL')}/auth/hubspot/callback`,
-        code,
-      }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
-    );
+    try {
+      const response = await axios.post(
+        HS_TOKEN_URL,
+        new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: this.config.getOrThrow('HUBSPOT_CLIENT_ID'),
+          client_secret: this.config.getOrThrow('HUBSPOT_CLIENT_SECRET'),
+          redirect_uri: `${this.config.getOrThrow('APP_URL')}/auth/hubspot/callback`,
+          code,
+        }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+      );
 
-    const { access_token, refresh_token, expires_in, hub_id } = response.data;
-    const expiresAt = new Date(Date.now() + expires_in * 1000);
+      const { access_token, refresh_token, expires_in, hub_id } = response.data;
+      const expiresAt = new Date(Date.now() + expires_in * 1000);
 
-    return {
-      accessToken: this.tokenStore.encrypt(access_token),
-      refreshToken: this.tokenStore.encrypt(refresh_token),
-      expiresAt,
-      portalId: String(hub_id),
-    };
+      return {
+        accessToken: this.tokenStore.encrypt(access_token),
+        refreshToken: this.tokenStore.encrypt(refresh_token),
+        expiresAt,
+        portalId: String(hub_id),
+      };
+    } catch (err) {
+      const axiosErr = err as AxiosError;
+      this.logger.error(
+        `HubSpot token exchange failed — status: ${axiosErr.response?.status}, body: ${JSON.stringify(axiosErr.response?.data)}`,
+      );
+      throw new InternalServerErrorException(
+        `HubSpot token exchange failed: status=${axiosErr.response?.status ?? axiosErr.message} body=${JSON.stringify(axiosErr.response?.data)}`,
+      );
+    }
   }
 
   async refreshTokens(installation: Installation): Promise<Installation> {

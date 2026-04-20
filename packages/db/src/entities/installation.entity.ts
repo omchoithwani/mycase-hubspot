@@ -39,7 +39,7 @@ export class Installation {
   @Column({ name: 'mycase_connected', type: 'boolean', default: false })
   mycaseConnected: boolean;
 
-  @Column({ name: 'sync_enabled', type: 'boolean', default: true })
+  @Column({ name: 'sync_enabled', type: 'boolean', default: false })
   syncEnabled: boolean;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
