@@ -1,6 +1,6 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { TokenStoreService } from './token-store.service';
 import { InstallationService } from '../installation/installation.service';
 import { Installation } from '@mycase-hubspot/db';
@@ -30,29 +30,45 @@ export class MyCaseOAuthService {
 
   async exchangeCode(code: string): Promise<{
     accessToken: string;
-    refreshToken: string;
+    refreshToken: string | null;
     expiresAt: Date;
   }> {
-    const response = await axios.post(
-      MYCASE_TOKEN_URL,
-      new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: this.config.getOrThrow('MYCASE_CLIENT_ID'),
-        client_secret: this.config.getOrThrow('MYCASE_CLIENT_SECRET'),
-        redirect_uri: this.config.getOrThrow('MYCASE_REDIRECT_URI'),
-        code,
-      }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
-    );
+    let response: Awaited<ReturnType<typeof axios.post>>;
+    try {
+      response = await axios.post(
+        MYCASE_TOKEN_URL,
+        new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: this.config.getOrThrow('MYCASE_CLIENT_ID'),
+          client_secret: this.config.getOrThrow('MYCASE_CLIENT_SECRET'),
+          redirect_uri: this.config.getOrThrow('MYCASE_REDIRECT_URI'),
+          code,
+        }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+      );
+    } catch (err) {
+      const axiosErr = err as AxiosError;
+      this.logger.error(
+        `MyCase token exchange failed — status: ${axiosErr.response?.status}, body: ${JSON.stringify(axiosErr.response?.data)}`,
+      );
+      throw new InternalServerErrorException(
+        `MyCase token exchange failed: ${axiosErr.response?.status ?? axiosErr.message}`,
+      );
+    }
 
     const { access_token, refresh_token, expires_in } = response.data;
-    const expiresAt = new Date(
-      Date.now() + (expires_in || 3600) * 1000,
-    );
+    this.logger.log(`MyCase token response fields: access_token=${!!access_token}, refresh_token=${!!refresh_token}, expires_in=${expires_in}`);
+
+    if (!access_token) {
+      this.logger.error(`MyCase token response missing access_token: ${JSON.stringify(response.data)}`);
+      throw new InternalServerErrorException('MyCase token response missing access_token');
+    }
+
+    const expiresAt = new Date(Date.now() + (expires_in || 3600) * 1000);
 
     return {
       accessToken: this.tokenStore.encrypt(access_token),
-      refreshToken: this.tokenStore.encrypt(refresh_token),
+      refreshToken: refresh_token ? this.tokenStore.encrypt(refresh_token) : null,
       expiresAt,
     };
   }

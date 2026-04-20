@@ -137,6 +137,11 @@ export class AuthController {
       throw new BadRequestException(`MyCase OAuth denied: ${error}`);
     }
 
+    if (!code) {
+      this.logger.warn(`MyCase callback missing code param — state=${state}`);
+      throw new BadRequestException('Missing authorization code from MyCase');
+    }
+
     // CSRF check — state contains installationId
     const installationId = await this.redis.get(`csrf:mc:${state}`);
     if (!installationId) {
@@ -148,7 +153,7 @@ export class AuthController {
 
     await this.installationService.updateMyCaseTokens(installationId, {
       accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      refreshToken: tokens.refreshToken ?? '',
       expiresAt: tokens.expiresAt,
     });
 
