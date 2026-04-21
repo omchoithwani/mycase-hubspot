@@ -109,7 +109,7 @@ export class MyCaseClientService {
       const axiosErr = err as AxiosError;
       if (axiosErr.response?.status === 404) {
         throw new NotFoundException(
-          `MyCase resource not found: ${axiosErr.config?.url}`,
+          `MyCase resource not found: ${axiosErr.config?.baseURL}${axiosErr.config?.url}`,
         );
       }
       if (axiosErr.response?.status === 401) {
@@ -123,7 +123,7 @@ export class MyCaseClientService {
 
   async getClient(installationId: string, clientId: string): Promise<McClient> {
     return this.call(installationId, (http) =>
-      http.get(`/contacts/${clientId}`).then((r) => r.data),
+      http.get(`/clients/${clientId}`).then((r) => r.data),
     );
   }
 
@@ -132,7 +132,7 @@ export class MyCaseClientService {
     data: McClientInput,
   ): Promise<McClient> {
     return this.call(installationId, (http) =>
-      http.post('/contacts', { contact: data }).then((r) => r.data),
+      http.post('/clients', { contact: data }).then((r) => r.data),
     );
   }
 
@@ -143,7 +143,7 @@ export class MyCaseClientService {
   ): Promise<McClient> {
     return this.call(installationId, (http) =>
       http
-        .put(`/contacts/${clientId}`, { contact: data })
+        .put(`/clients/${clientId}`, { contact: data })
         .then((r) => r.data),
     );
   }
@@ -157,7 +157,7 @@ export class MyCaseClientService {
       if (since) {
         params.updated_since = since.toISOString();
       }
-      return http.get('/contacts', { params }).then((r) => r.data.contacts ?? r.data ?? []);
+      return http.get('/clients', { params }).then((r) => r.data.contacts ?? r.data ?? []);
     });
   }
 
@@ -167,7 +167,7 @@ export class MyCaseClientService {
   ): Promise<McClient | null> {
     const clients = await this.call(installationId, (http) =>
       http
-        .get('/contacts', { params: { email } })
+        .get('/clients', { params: { email } })
         .then((r) => r.data.contacts ?? r.data ?? []),
     );
     return (clients as McClient[]).find(
@@ -179,7 +179,7 @@ export class MyCaseClientService {
 
   async getMatter(installationId: string, matterId: string): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.get(`/cases/${matterId}`).then((r) => r.data),
+      http.get(`/matters/${matterId}`).then((r) => r.data),
     );
   }
 
@@ -188,7 +188,7 @@ export class MyCaseClientService {
     data: McMatterInput,
   ): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.post('/cases', { case: data }).then((r) => r.data),
+      http.post('/matters', { case: data }).then((r) => r.data),
     );
   }
 
@@ -198,7 +198,7 @@ export class MyCaseClientService {
     data: Partial<McMatterInput>,
   ): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.put(`/cases/${matterId}`, { case: data }).then((r) => r.data),
+      http.put(`/matters/${matterId}`, { case: data }).then((r) => r.data),
     );
   }
 
@@ -211,7 +211,7 @@ export class MyCaseClientService {
       if (since) {
         params.updated_since = since.toISOString();
       }
-      return http.get('/cases', { params }).then((r) => r.data.cases ?? r.data ?? []);
+      return http.get('/matters', { params }).then((r) => r.data.cases ?? r.data ?? []);
     });
   }
 
@@ -221,7 +221,7 @@ export class MyCaseClientService {
   ): Promise<McMatter[]> {
     return this.call(installationId, (http) =>
       http
-        .get('/cases', { params: { contact_id: clientId } })
+        .get('/matters', { params: { contact_id: clientId } })
         .then((r) => r.data.cases ?? r.data ?? []),
     );
   }
