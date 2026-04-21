@@ -108,6 +108,9 @@ export class MyCaseClientService {
     } catch (err) {
       const axiosErr = err as AxiosError;
       if (axiosErr.response?.status === 404) {
+        this.logger.error(
+          `MyCase 404 — URL: ${axiosErr.config?.baseURL}${axiosErr.config?.url} — body: ${JSON.stringify(axiosErr.response?.data)}`,
+        );
         throw new NotFoundException(
           `MyCase resource not found: ${axiosErr.config?.baseURL}${axiosErr.config?.url}`,
         );
