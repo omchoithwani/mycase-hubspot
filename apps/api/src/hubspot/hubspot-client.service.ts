@@ -341,6 +341,74 @@ export class HubSpotClientService {
     );
   }
 
+  // ── Poll: recently modified ──────────────────────────────────────────────────
+
+  async listContactsModifiedSince(
+    portalId: string,
+    installationId: string,
+    since: Date,
+  ): Promise<HsContact[]> {
+    const results: HsContact[] = [];
+    let after: string | undefined;
+
+    do {
+      const page = await this.call(portalId, installationId, (http) =>
+        http
+          .post('/crm/v3/objects/contacts/search', {
+            filterGroups: [{
+              filters: [{
+                propertyName: 'lastmodifieddate',
+                operator: 'GT',
+                value: String(since.getTime()),
+              }],
+            }],
+            sorts: [{ propertyName: 'lastmodifieddate', direction: 'ASCENDING' }],
+            properties: ['email', 'firstname', 'lastname', 'phone', 'company', 'mycase_client_id'],
+            limit: 100,
+            ...(after ? { after } : {}),
+          })
+          .then((r) => r.data),
+      );
+      results.push(...(page.results ?? []));
+      after = page.paging?.next?.after as string | undefined;
+    } while (after);
+
+    return results;
+  }
+
+  async listDealsModifiedSince(
+    portalId: string,
+    installationId: string,
+    since: Date,
+  ): Promise<HsDeal[]> {
+    const results: HsDeal[] = [];
+    let after: string | undefined;
+
+    do {
+      const page = await this.call(portalId, installationId, (http) =>
+        http
+          .post('/crm/v3/objects/deals/search', {
+            filterGroups: [{
+              filters: [{
+                propertyName: 'hs_lastmodifieddate',
+                operator: 'GT',
+                value: String(since.getTime()),
+              }],
+            }],
+            sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'ASCENDING' }],
+            properties: ['dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'mycase_matter_id'],
+            limit: 100,
+            ...(after ? { after } : {}),
+          })
+          .then((r) => r.data),
+      );
+      results.push(...(page.results ?? []));
+      after = page.paging?.next?.after as string | undefined;
+    } while (after);
+
+    return results;
+  }
+
   // ── Paginated list (for initial sync) ────────────────────────────────────────
 
   async listContactsPage(
