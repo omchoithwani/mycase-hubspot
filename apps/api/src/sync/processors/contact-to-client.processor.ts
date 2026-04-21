@@ -62,13 +62,7 @@ export class ContactToClientProcessor extends BaseProcessor {
       first_name: (mapped['first_name'] as string) ?? contact.properties.firstname ?? '',
       last_name: (mapped['last_name'] as string) ?? contact.properties.lastname ?? '',
       email: (mapped['email'] as string) ?? contact.properties.email,
-      phone_numbers:
-        mapped['phone_number']
-          ? [{ number: mapped['phone_number'] as string, type: 'work' }]
-          : contact.properties.phone
-          ? [{ number: contact.properties.phone, type: 'work' }]
-          : undefined,
-      company_name: (mapped['company_name'] as string) ?? contact.properties.company,
+      cell_phone_number: (mapped['cell_phone_number'] as string) ?? contact.properties.phone,
     };
 
     // 5. Change detection
@@ -94,7 +88,7 @@ export class ContactToClientProcessor extends BaseProcessor {
           email: clientData.email,
           firstName: clientData.first_name,
           lastName: clientData.last_name,
-          phone: clientData.phone_numbers?.[0]?.number,
+          phone: clientData.cell_phone_number,
         },
       );
 

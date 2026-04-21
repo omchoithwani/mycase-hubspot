@@ -58,8 +58,7 @@ export class ClientToContactProcessor extends BaseProcessor {
       firstname: (mapped['firstname'] as string) ?? client.first_name,
       lastname: (mapped['lastname'] as string) ?? client.last_name,
       email: (mapped['email'] as string) ?? client.email,
-      phone: (mapped['phone'] as string) ?? client.phone_numbers?.[0]?.number,
-      company: (mapped['company'] as string) ?? client.company_name,
+      phone: (mapped['phone'] as string) ?? client.cell_phone_number ?? client.home_phone_number,
       mycase_client_id: sourceId,
     };
 

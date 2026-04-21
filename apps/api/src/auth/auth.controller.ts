@@ -153,9 +153,6 @@ export class AuthController {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
-      baseUrl: tokens.firmUuid
-        ? `https://app.mycase.com/api/v1/${tokens.firmUuid}`
-        : undefined,
     });
 
     // Seed default field mappings now that both systems are connected (best effort)

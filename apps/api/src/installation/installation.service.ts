@@ -65,9 +65,7 @@ export class InstallationService {
     installation.mycaseRefreshToken = data.refreshToken;
     installation.mycaseTokenExpiresAt = data.expiresAt;
     installation.mycaseConnected = true;
-    if (data.baseUrl) {
-      installation.mycaseBaseUrl = data.baseUrl;
-    }
+    installation.mycaseBaseUrl = data.baseUrl ?? null;
     return this.repo.save(installation);
   }
 

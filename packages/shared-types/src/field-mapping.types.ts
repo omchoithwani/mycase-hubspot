@@ -42,7 +42,7 @@ export const DEFAULT_FIELD_MAPPINGS: FieldMappingConfig[] = [
   {
     objectType: 'contact',
     hubspotField: 'phone',
-    mycaseField: 'phone_number',
+    mycaseField: 'cell_phone_number',
     direction: 'both',
     transformType: 'phone_format',
   },

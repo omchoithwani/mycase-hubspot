@@ -16,7 +16,7 @@ import { McClient, McClientInput } from './dto/client.dto';
 import { McMatter, McMatterInput } from './dto/matter.dto';
 import { McNote, McNoteInput } from './dto/note.dto';
 
-const MYCASE_BASE = 'https://app.mycase.com/api/v1';
+const MYCASE_BASE = 'https://external-integrations.mycase.com/v1';
 
 /**
  * Conservative rate limit: 1 req/s until MyCase documents their limit.
@@ -135,7 +135,7 @@ export class MyCaseClientService {
     data: McClientInput,
   ): Promise<McClient> {
     return this.call(installationId, (http) =>
-      http.post('/clients', { contact: data }).then((r) => r.data),
+      http.post('/clients', data).then((r) => r.data),
     );
   }
 
@@ -145,9 +145,7 @@ export class MyCaseClientService {
     data: Partial<McClientInput>,
   ): Promise<McClient> {
     return this.call(installationId, (http) =>
-      http
-        .put(`/clients/${clientId}`, { contact: data })
-        .then((r) => r.data),
+      http.put(`/clients/${clientId}`, data).then((r) => r.data),
     );
   }
 
@@ -160,7 +158,7 @@ export class MyCaseClientService {
       if (since) {
         params.updated_since = since.toISOString();
       }
-      return http.get('/clients', { params }).then((r) => r.data.contacts ?? r.data ?? []);
+      return http.get('/clients', { params }).then((r) => r.data.clients ?? r.data ?? []);
     });
   }
 
@@ -171,18 +169,18 @@ export class MyCaseClientService {
     const clients = await this.call(installationId, (http) =>
       http
         .get('/clients', { params: { email } })
-        .then((r) => r.data.contacts ?? r.data ?? []),
+        .then((r) => r.data.clients ?? r.data ?? []),
     );
     return (clients as McClient[]).find(
       (c) => c.email?.toLowerCase() === email.toLowerCase(),
     ) ?? null;
   }
 
-  // ── Matters ──────────────────────────────────────────────────────────────────
+  // ── Cases (Matters) ───────────────────────────────────────────────────────────
 
   async getMatter(installationId: string, matterId: string): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.get(`/matters/${matterId}`).then((r) => r.data),
+      http.get(`/cases/${matterId}`).then((r) => r.data),
     );
   }
 
@@ -191,7 +189,7 @@ export class MyCaseClientService {
     data: McMatterInput,
   ): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.post('/matters', { case: data }).then((r) => r.data),
+      http.post('/cases', data).then((r) => r.data),
     );
   }
 
@@ -201,7 +199,7 @@ export class MyCaseClientService {
     data: Partial<McMatterInput>,
   ): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.put(`/matters/${matterId}`, { case: data }).then((r) => r.data),
+      http.put(`/cases/${matterId}`, data).then((r) => r.data),
     );
   }
 
@@ -214,7 +212,7 @@ export class MyCaseClientService {
       if (since) {
         params.updated_since = since.toISOString();
       }
-      return http.get('/matters', { params }).then((r) => r.data.cases ?? r.data ?? []);
+      return http.get('/cases', { params }).then((r) => r.data.cases ?? r.data ?? []);
     });
   }
 
@@ -224,7 +222,7 @@ export class MyCaseClientService {
   ): Promise<McMatter[]> {
     return this.call(installationId, (http) =>
       http
-        .get('/matters', { params: { contact_id: clientId } })
+        .get(`/clients/${clientId}/cases`)
         .then((r) => r.data.cases ?? r.data ?? []),
     );
   }
@@ -242,7 +240,7 @@ export class MyCaseClientService {
     data: McNoteInput,
   ): Promise<McNote> {
     return this.call(installationId, (http) =>
-      http.post('/notes', { note: data }).then((r) => r.data),
+      http.post('/notes', data).then((r) => r.data),
     );
   }
 
@@ -252,7 +250,7 @@ export class MyCaseClientService {
     data: Partial<McNoteInput>,
   ): Promise<McNote> {
     return this.call(installationId, (http) =>
-      http.put(`/notes/${noteId}`, { note: data }).then((r) => r.data),
+      http.put(`/notes/${noteId}`, data).then((r) => r.data),
     );
   }
 

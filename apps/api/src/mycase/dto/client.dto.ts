@@ -1,21 +1,25 @@
-export interface McPhoneNumber {
-  number: string;
-  type?: string; // 'mobile' | 'home' | 'work'
-}
-
 export interface McClient {
-  id: string;
+  id: string | number;
   first_name: string;
+  middle_name?: string;
   last_name: string;
   email?: string;
-  phone_numbers?: McPhoneNumber[];
-  company_name?: string;
+  cell_phone_number?: string;
+  work_phone_number?: string;
+  home_phone_number?: string;
+  fax_phone_number?: string;
   address?: {
-    street?: string;
+    address1?: string;
+    address2?: string;
     city?: string;
     state?: string;
-    zip?: string;
+    zip_code?: string;
+    country?: string;
   };
+  notes?: string;
+  birthdate?: string;
+  archived?: boolean;
+  cases?: Array<{ id: number }>;
   created_at?: string;
   updated_at?: string;
 }
@@ -23,13 +27,20 @@ export interface McClient {
 export interface McClientInput {
   first_name: string;
   last_name: string;
+  middle_name?: string;
   email?: string;
-  phone_numbers?: McPhoneNumber[];
-  company_name?: string;
+  cell_phone_number?: string;
+  work_phone_number?: string;
+  home_phone_number?: string;
   address?: {
-    street?: string;
+    address1?: string;
+    address2?: string;
     city?: string;
     state?: string;
-    zip?: string;
+    zip_code?: string;
+    country?: string;
   };
+  notes?: string;
+  birthdate?: string;
+  cases?: Array<{ id: number }>;
 }
