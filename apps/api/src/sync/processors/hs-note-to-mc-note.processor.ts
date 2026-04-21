@@ -47,7 +47,7 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
     );
     if (!eligible) return this.skip('Record does not meet sync criteria');
 
-    // 3. Apply configured field mapping (html_strip transform applied to description)
+    // 3. Apply field mapping (html_strip transform applied to note body)
     const mapped = await this.fieldMapping.applyMapping(
       installationId,
       'note',
@@ -55,12 +55,12 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
       note.properties as Record<string, unknown>,
     );
 
-    const body = (mapped['description'] as string) ?? '';
+    const body = (mapped['note'] as string) ?? note.properties.hs_note_body ?? '';
     if (!body) {
       return this.skip('Note body is empty after applying field mapping');
     }
 
-    // 3. Find which MyCase resource (client or matter) to attach to
+    // 4. Find which MyCase case or client to attach the note to
     const { clientId, matterId } = await this.resolveAssociations(
       installationId,
       installation.hubspotPortalId,
@@ -69,21 +69,22 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
 
     if (!clientId && !matterId) {
       return this.skip(
-        'No synced MyCase client or matter found for this note — sync the parent record first',
+        'No synced MyCase client or case found for this note — sync the parent record first',
       );
     }
 
-    // 4. Build note payload
+    // 5. Build note payload — subject is first 80 chars of body if not mapped
+    const dateIso = note.properties.hs_timestamp
+      ? new Date(Number(note.properties.hs_timestamp)).toISOString()
+      : new Date().toISOString();
+
     const noteData: McNoteInput = {
-      description: body,
-      date: note.properties.hs_timestamp
-        ? new Date(Number(note.properties.hs_timestamp)).toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0],
-      client_id: clientId ?? undefined,
-      matter_id: matterId ?? undefined,
+      subject: (mapped['subject'] as string) ?? body.slice(0, 80),
+      note: body,
+      date: dateIso,
     };
 
-    // 5. Change detection
+    // 6. Change detection
     const existing = await this.syncRecords.findByHubSpotId(
       installationId,
       'note',
@@ -93,13 +94,15 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
       return this.skip('Note body unchanged since last sync');
     }
 
-    // 6. Create or update
+    // 7. Create or update
     let mycaseId = existing?.mycaseObjectId;
     let action: 'created' | 'updated';
 
     if (!mycaseId) {
-      const created = await this.mycase.createNote(installationId, noteData);
-      mycaseId = created.id;
+      const created = matterId
+        ? await this.mycase.createNoteForCase(installationId, matterId, noteData)
+        : await this.mycase.createNoteForClient(installationId, clientId!, noteData);
+      mycaseId = String(created.id);
       action = 'created';
       this.logger.log(`Created MyCase note ${mycaseId} from HubSpot note ${sourceId}`);
     } else {
@@ -107,7 +110,7 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
       action = 'updated';
     }
 
-    // 7. Upsert sync record
+    // 8. Upsert sync record
     await this.syncRecords.upsert({
       installationId,
       objectType: 'note',

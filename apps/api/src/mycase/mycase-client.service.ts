@@ -235,12 +235,23 @@ export class MyCaseClientService {
     );
   }
 
-  async createNote(
+  async createNoteForCase(
     installationId: string,
+    caseId: string,
     data: McNoteInput,
   ): Promise<McNote> {
     return this.call(installationId, (http) =>
-      http.post('/notes', data).then((r) => r.data),
+      http.post(`/cases/${caseId}/notes`, data).then((r) => r.data),
+    );
+  }
+
+  async createNoteForClient(
+    installationId: string,
+    clientId: string,
+    data: McNoteInput,
+  ): Promise<McNote> {
+    return this.call(installationId, (http) =>
+      http.post(`/clients/${clientId}/notes`, data).then((r) => r.data),
     );
   }
 
@@ -260,7 +271,7 @@ export class MyCaseClientService {
   ): Promise<McNote[]> {
     return this.call(installationId, (http) =>
       http
-        .get('/notes', { params: { case_id: matterId } })
+        .get(`/cases/${matterId}/notes`)
         .then((r) => r.data.notes ?? r.data ?? []),
     );
   }
@@ -271,7 +282,7 @@ export class MyCaseClientService {
   ): Promise<McNote[]> {
     return this.call(installationId, (http) =>
       http
-        .get('/notes', { params: { contact_id: clientId } })
+        .get(`/clients/${clientId}/notes`)
         .then((r) => r.data.notes ?? r.data ?? []),
     );
   }

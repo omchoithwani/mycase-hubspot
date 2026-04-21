@@ -48,8 +48,9 @@ export class MatterToDealProcessor extends BaseProcessor {
     if (!eligible) return this.skip('Record does not meet sync criteria');
 
     // 3. Resolve linked HubSpot contact
-    const contactRecord = matter.client_id
-      ? await this.syncRecords.findByMyCaseId(installationId, 'contact', matter.client_id)
+    const linkedClientId = matter.clients?.[0]?.id ? String(matter.clients[0].id) : null;
+    const contactRecord = linkedClientId
+      ? await this.syncRecords.findByMyCaseId(installationId, 'contact', linkedClientId)
       : null;
 
     // 4. Apply configured field mapping
@@ -71,10 +72,10 @@ export class MatterToDealProcessor extends BaseProcessor {
       mycase_matter_id: sourceId,
       closedate:
         (mapped['closedate'] as string) ??
-        (matter.close_date ? String(new Date(matter.close_date).getTime()) : undefined),
+        (matter.sol_date ? String(new Date(matter.sol_date).getTime()) : undefined),
       amount:
         (mapped['amount'] as string) ??
-        (matter.rate != null ? String(matter.rate / 100) : undefined),
+        (matter.outstanding_balance != null ? String(matter.outstanding_balance) : undefined),
       dealstage: hsStage?.stageId,
       pipeline: hsStage?.pipelineId,
     };

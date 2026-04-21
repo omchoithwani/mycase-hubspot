@@ -32,9 +32,40 @@ interface HsProperty {
 }
 
 const MC_FIELDS: Record<ObjectType, string[]> = {
-  contact: ['first_name', 'last_name', 'email', 'phone_numbers[0].number', 'company_name'],
-  deal: ['name', 'status', 'close_date', 'rate'],
-  note: ['description', 'date'],
+  contact: [
+    'first_name',
+    'last_name',
+    'middle_name',
+    'email',
+    'cell_phone_number',
+    'work_phone_number',
+    'home_phone_number',
+    'fax_phone_number',
+    'birthdate',
+    'notes',
+    'address.address1',
+    'address.address2',
+    'address.city',
+    'address.state',
+    'address.zip_code',
+    'address.country',
+  ],
+  deal: [
+    'name',
+    'case_number',
+    'status',
+    'case_stage',
+    'practice_area',
+    'description',
+    'opened_date',
+    'sol_date',
+    'outstanding_balance',
+  ],
+  note: [
+    'subject',
+    'note',
+    'date',
+  ],
 };
 
 const DIRECTION_LABELS: Record<Direction, string> = {

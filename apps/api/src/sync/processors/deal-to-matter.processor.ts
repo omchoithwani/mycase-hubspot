@@ -86,10 +86,17 @@ export class DealToMatterProcessor extends BaseProcessor {
     // 6. Compose final matter payload
     const matterData: McMatterInput = {
       name: (mapped['name'] as string) ?? props.dealname ?? 'Untitled Matter',
-      client_id: mycaseClientId,
-      status: mycaseStatus ?? 'Open',
-      close_date: mapped['close_date'] as string | undefined,
-      rate: mapped['rate'] as number | undefined,
+      clients: [{ id: Number(mycaseClientId) }],
+      status: mycaseStatus ?? 'open',
+      case_stage: mapped['case_stage'] as string | undefined,
+      description: mapped['description'] as string | undefined,
+      opened_date: mapped['opened_date'] as string | undefined,
+      outstanding_balance:
+        mapped['outstanding_balance'] != null
+          ? Number(mapped['outstanding_balance'])
+          : props.amount != null
+          ? Number(props.amount)
+          : undefined,
     };
 
     // 7. Change detection
@@ -130,7 +137,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       }
 
       const created = await this.mycase.createMatter(installationId, matterData);
-      mycaseId = created.id;
+      mycaseId = String(created.id);
       action = 'created';
       this.logger.log(`Created MyCase matter ${mycaseId} from HubSpot deal ${sourceId}`);
     } else {

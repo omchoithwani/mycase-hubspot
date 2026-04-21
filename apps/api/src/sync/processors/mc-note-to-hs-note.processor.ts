@@ -36,9 +36,9 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
     // 1. Fetch note from MyCase
     const note = await this.mycase.getNote(installationId, sourceId);
 
-    const rawBody = note.description ?? '';
+    const rawBody = note.note ?? '';
     if (!rawBody) {
-      return this.skip('MyCase note description is empty');
+      return this.skip('MyCase note body is empty');
     }
 
     // 2. Evaluate sync criteria
@@ -118,15 +118,15 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
 
   private async resolveAssociations(
     installationId: string,
-    note: { client_id?: string; matter_id?: string },
+    note: { client?: { id: number } | null; case?: { id: number } | null },
   ): Promise<HsNoteAssociation[]> {
     const associations: HsNoteAssociation[] = [];
 
-    if (note.client_id) {
+    if (note.client?.id) {
       const contactRecord = await this.syncRecords.findByMyCaseId(
         installationId,
         'contact',
-        note.client_id,
+        String(note.client.id),
       );
       if (contactRecord) {
         associations.push({
@@ -136,11 +136,11 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
       }
     }
 
-    if (note.matter_id) {
+    if (note.case?.id) {
       const dealRecord = await this.syncRecords.findByMyCaseId(
         installationId,
         'deal',
-        note.matter_id,
+        String(note.case.id),
       );
       if (dealRecord) {
         associations.push({
