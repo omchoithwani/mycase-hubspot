@@ -162,7 +162,7 @@ export class DuplicateDetectorService {
         for (const m of matters) {
           const score = jaroWinkler(srcName, normName(m.name));
           if (score >= 0.92) {
-            return { existingId: m.id, ambiguous: false, confidence: 'fuzzy', score };
+            return { existingId: String(m.id), ambiguous: false, confidence: 'fuzzy', score };
           }
         }
       } catch {
