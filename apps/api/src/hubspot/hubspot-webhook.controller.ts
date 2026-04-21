@@ -89,7 +89,7 @@ export class HubSpotWebhookController {
       await this.queue.add(`${objectType}-${event.objectId}`, payload, {
         ...SYNC_JOB_OPTIONS,
         delay: 500, // 500ms delay so HubSpot finishes writing before we fetch
-        jobId: `hs:${event.portalId}:${objectType}:${event.objectId}:${event.occurredAt}`,
+        jobId: `hs.${event.portalId}.${objectType}.${event.objectId}.${event.occurredAt}`,
       });
 
       enqueued++;

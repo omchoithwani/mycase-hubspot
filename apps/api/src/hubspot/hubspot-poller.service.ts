@@ -79,7 +79,7 @@ export class HubSpotPollerService {
 
         await this.queue.add(`${objectType}-${record.id}`, payload, {
           ...SYNC_JOB_OPTIONS,
-          jobId: `hs:poll:${installationId}:${objectType}:${record.id}`,
+          jobId: `hs.poll.${installationId}.${objectType}.${record.id}`,
         });
       }
 

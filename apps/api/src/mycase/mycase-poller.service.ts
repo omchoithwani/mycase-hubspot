@@ -86,7 +86,7 @@ export class MyCasePollerService {
 
         await this.queue.add(`${syncObjectType}-${record.id}`, payload, {
           ...SYNC_JOB_OPTIONS,
-          jobId: `mc:poll:${installationId}:${syncObjectType}:${record.id}`,
+          jobId: `mc.poll.${installationId}.${syncObjectType}.${record.id}`,
         });
       }
 
