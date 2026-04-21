@@ -32,6 +32,7 @@ export class MyCaseOAuthService {
     accessToken: string;
     refreshToken: string | null;
     expiresAt: Date;
+    firmUuid: string | undefined;
   }> {
     try {
       const response = await axios.post<{
@@ -51,9 +52,9 @@ export class MyCaseOAuthService {
         { headers: { 'Content-Type': 'application/json' } },
       );
 
-      const { access_token, refresh_token, expires_in } = response.data;
+      const { access_token, refresh_token, expires_in, firm_uuid } = response.data;
       this.logger.log(
-        `MyCase token response: access_token=${!!access_token}, refresh_token=${!!refresh_token}, expires_in=${expires_in}`,
+        `MyCase token response: access_token=${!!access_token}, refresh_token=${!!refresh_token}, expires_in=${expires_in}, firm_uuid=${firm_uuid}`,
       );
 
       if (!access_token) {
@@ -68,6 +69,7 @@ export class MyCaseOAuthService {
         accessToken: this.tokenStore.encrypt(access_token),
         refreshToken: refresh_token ? this.tokenStore.encrypt(refresh_token) : null,
         expiresAt,
+        firmUuid: firm_uuid,
       };
     } catch (err) {
       if (err instanceof InternalServerErrorException) throw err;

@@ -116,39 +116,19 @@ export class HubSpotOAuthService {
     return this.tokenStore.decrypt(installation.hubspotAccessToken);
   }
 
-  async subscribeWebhooks(accessToken: string): Promise<void> {
-    const appId = this.config.getOrThrow('HUBSPOT_APP_ID');
-    const headers = { Authorization: `Bearer ${accessToken}` };
-
-    const subscriptions = [
-      { eventType: 'contact.creation', propertyName: null },
-      { eventType: 'contact.propertyChange', propertyName: '*' },
-      { eventType: 'deal.creation', propertyName: null },
-      { eventType: 'deal.propertyChange', propertyName: '*' },
-      { eventType: 'contact_note.creation', propertyName: null },
-      { eventType: 'contact_note.propertyChange', propertyName: null },
-    ];
-
-    for (const sub of subscriptions) {
-      try {
-        await axios.post(
-          `${HS_WEBHOOK_URL}/${appId}/subscriptions`,
-          sub.propertyName
-            ? { eventType: sub.eventType, propertyName: sub.propertyName, active: true }
-            : { eventType: sub.eventType, active: true },
-          { headers },
-        );
-      } catch (err: any) {
-        // 409 means subscription already exists — ignore
-        if (err?.response?.status !== 409) {
-          this.logger.warn(
-            `Failed to subscribe webhook ${sub.eventType}: ${err?.message}`,
-          );
-        }
-      }
-    }
-
-    this.logger.log('HubSpot webhook subscriptions configured');
+  async subscribeWebhooks(_accessToken: string): Promise<void> {
+    // HubSpot webhook subscriptions for public OAuth apps must be configured
+    // in the HubSpot developer portal (developers.hubspot.com → Apps → Webhooks).
+    // The portal user's OAuth token cannot manage app-level webhook subscriptions.
+    //
+    // Required setup in HubSpot developer portal:
+    //   Webhook URL: <APP_URL>/webhooks/hubspot
+    //   Subscriptions: contact.creation, contact.propertyChange,
+    //                  deal.creation, deal.propertyChange,
+    //                  contact_note.creation, contact_note.propertyChange
+    this.logger.log(
+      'Reminder: HubSpot webhook subscriptions must be configured manually in the developer portal at developers.hubspot.com',
+    );
   }
 
   async createCustomProperties(accessToken: string): Promise<void> {
