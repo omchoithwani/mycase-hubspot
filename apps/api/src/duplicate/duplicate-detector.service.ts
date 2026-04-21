@@ -84,7 +84,7 @@ export class DuplicateDetectorService {
       if (opts.email) {
         const found = await this.mycase.searchClientByEmail(installationId, opts.email);
         if (found) {
-          return { existingId: found.id, ambiguous: false, confidence: 'exact', score: 1.0 };
+          return { existingId: String(found.id), ambiguous: false, confidence: 'exact', score: 1.0 };
         }
       }
       // No fuzzy fallback for MyCase (limited search API)

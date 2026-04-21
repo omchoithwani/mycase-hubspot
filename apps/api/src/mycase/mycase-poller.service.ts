@@ -66,7 +66,7 @@ export class MyCasePollerService {
     const pollStart = new Date();
 
     try {
-      let records: Array<{ id: string }>;
+      let records: Array<{ id: string | number }>;
 
       if (mycaseType === 'client') {
         records = await this.mycaseClient.listClients(installationId, since);
@@ -79,7 +79,7 @@ export class MyCasePollerService {
           installationId,
           direction: 'mc_to_hs',
           objectType: syncObjectType,
-          sourceId: record.id,
+          sourceId: String(record.id),
           sourceSystem: 'mycase',
           triggeredBy: 'poll',
         };

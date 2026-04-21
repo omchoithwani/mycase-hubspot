@@ -112,7 +112,7 @@ export class ContactToClientProcessor extends BaseProcessor {
       }
 
       const created = await this.mycase.createClient(installationId, clientData);
-      mycaseId = created.id;
+      mycaseId = String(created.id);
       action = 'created';
       this.logger.log(`Created MyCase client ${mycaseId} from HubSpot contact ${sourceId}`);
     } else {
@@ -125,7 +125,7 @@ export class ContactToClientProcessor extends BaseProcessor {
       installationId,
       objectType: 'contact',
       hubspotObjectId: sourceId,
-      mycaseObjectId: mycaseId,
+      mycaseObjectId: mycaseId!,
       payload: clientData as any,
       direction: 'hs_to_mc',
     });
