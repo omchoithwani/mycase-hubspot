@@ -8,7 +8,14 @@ import { InstallationService } from '../../installation/installation.service';
 import { FieldMappingService } from '../../field-mapping/field-mapping.service';
 import { DuplicateDetectorService } from '../../duplicate/duplicate-detector.service';
 import { SyncCriteriaService } from '../../sync-criteria/sync-criteria.service';
-import { McClientInput } from '../../mycase/dto/client.dto';
+import { McClientInput, McCustomFieldValue } from '../../mycase/dto/client.dto';
+
+function extractCustomFieldValues(mapped: Record<string, unknown>): McCustomFieldValue[] {
+  return Object.entries(mapped)
+    .filter(([k]) => k.startsWith('custom_field:'))
+    .map(([k, v]) => ({ custom_field: { id: parseInt(k.split(':')[1], 10) }, value: v as string | number | boolean }))
+    .filter((cf) => !isNaN(cf.custom_field.id) && cf.value != null);
+}
 
 @Injectable()
 export class ContactToClientProcessor extends BaseProcessor {
@@ -58,11 +65,13 @@ export class ContactToClientProcessor extends BaseProcessor {
     );
 
     // 4. Build MyCase client (mapped fields + required fallbacks)
+    const customFieldValues = extractCustomFieldValues(mapped);
     const clientData: McClientInput = {
       first_name: (mapped['first_name'] as string) ?? contact.properties.firstname ?? '',
       last_name: (mapped['last_name'] as string) ?? contact.properties.lastname ?? '',
       email: (mapped['email'] as string) ?? contact.properties.email,
       cell_phone_number: (mapped['cell_phone_number'] as string) ?? contact.properties.phone,
+      custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined,
     };
 
     // 5. Change detection

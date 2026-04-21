@@ -6,12 +6,14 @@ import { FieldTransformerService } from './field-transformer.service';
 import { FieldMappingController } from './field-mapping.controller';
 import { HubSpotModule } from '../hubspot/hubspot.module';
 import { InstallationModule } from '../installation/installation.module';
+import { MyCaseModule } from '../mycase/mycase.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([FieldMapping]),
     HubSpotModule,
     InstallationModule,
+    MyCaseModule,
   ],
   controllers: [FieldMappingController],
   providers: [FieldMappingService, FieldTransformerService],

@@ -1,3 +1,8 @@
+export interface McCustomFieldValue {
+  custom_field: { id: number };
+  value: string | number | boolean;
+}
+
 export interface McClient {
   id: string | number;
   first_name: string;
@@ -43,4 +48,5 @@ export interface McClientInput {
   notes?: string;
   birthdate?: string;
   cases?: Array<{ id: number }>;
+  custom_field_values?: McCustomFieldValue[];
 }

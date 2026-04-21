@@ -122,6 +122,20 @@ export class MyCaseClientService {
     }
   }
 
+  // ── Custom Fields ─────────────────────────────────────────────────────────────
+
+  async listCustomFields(installationId: string): Promise<Array<{
+    id: number;
+    name: string;
+    parent_type: string;
+    field_type: string;
+    list_options?: Array<{ key: string; option: string }>;
+  }>> {
+    return this.call(installationId, (http) =>
+      http.get('/custom_fields', { params: { page_size: 1000 } }).then((r) => r.data ?? []),
+    );
+  }
+
   // ── Clients ──────────────────────────────────────────────────────────────────
 
   async getClient(installationId: string, clientId: string): Promise<McClient> {

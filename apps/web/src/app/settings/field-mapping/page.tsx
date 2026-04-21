@@ -31,6 +31,13 @@ interface HsProperty {
   label: string;
 }
 
+interface McCustomField {
+  id: number;
+  name: string;
+  parent_type: string;
+  field_type: string;
+}
+
 const MC_FIELDS: Record<ObjectType, string[]> = {
   contact: [
     'first_name',
@@ -100,6 +107,7 @@ function FieldMappingPageContent() {
   const [objectType, setObjectType] = useState<ObjectType>('contact');
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
   const [hsProps, setHsProps] = useState<HsProperty[]>([]);
+  const [mcCustomFields, setMcCustomFields] = useState<McCustomField[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -138,10 +146,24 @@ function FieldMappingPageContent() {
     }
   }, [installationId, hsObjectType]);
 
+  const fetchMcCustomFields = useCallback(async () => {
+    if (!installationId) return;
+    try {
+      const res = await fetch(
+        `${API}/installations/${installationId}/field-mappings/mycase-custom-fields`,
+      );
+      const data = await res.json();
+      setMcCustomFields(Array.isArray(data) ? data : []);
+    } catch {
+      setMcCustomFields([]);
+    }
+  }, [installationId]);
+
   useEffect(() => {
     fetchMappings();
     fetchHsProps();
-  }, [fetchMappings, fetchHsProps]);
+    fetchMcCustomFields();
+  }, [fetchMappings, fetchHsProps, fetchMcCustomFields]);
 
   function openAdd() {
     setEditId(null);
@@ -351,11 +373,28 @@ function FieldMappingPageContent() {
                   className="w-full border rounded px-2 py-1.5 text-sm"
                 >
                   <option value="">Select a field…</option>
-                  {MC_FIELDS[objectType].map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
+                  <optgroup label="Standard Fields">
+                    {MC_FIELDS[objectType].map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </optgroup>
+                  {mcCustomFields.filter((cf) =>
+                    objectType === 'contact' ? cf.parent_type === 'client' :
+                    objectType === 'deal' ? cf.parent_type === 'case' : false
+                  ).length > 0 && (
+                    <optgroup label="Custom Fields">
+                      {mcCustomFields
+                        .filter((cf) =>
+                          objectType === 'contact' ? cf.parent_type === 'client' :
+                          objectType === 'deal' ? cf.parent_type === 'case' : false
+                        )
+                        .map((cf) => (
+                          <option key={cf.id} value={`custom_field:${cf.id}`}>
+                            {cf.name} ({cf.field_type})
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
 

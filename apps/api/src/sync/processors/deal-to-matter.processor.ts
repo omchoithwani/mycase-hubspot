@@ -9,7 +9,14 @@ import { FieldMappingService } from '../../field-mapping/field-mapping.service';
 import { StageMappingService } from '../../stage-mapping/stage-mapping.service';
 import { DuplicateDetectorService } from '../../duplicate/duplicate-detector.service';
 import { SyncCriteriaService } from '../../sync-criteria/sync-criteria.service';
-import { McMatterInput } from '../../mycase/dto/matter.dto';
+import { McMatterInput, McCustomFieldValue } from '../../mycase/dto/matter.dto';
+
+function extractCustomFieldValues(mapped: Record<string, unknown>): McCustomFieldValue[] {
+  return Object.entries(mapped)
+    .filter(([k]) => k.startsWith('custom_field:'))
+    .map(([k, v]) => ({ custom_field: { id: parseInt(k.split(':')[1], 10) }, value: v as string | number | boolean }))
+    .filter((cf) => !isNaN(cf.custom_field.id) && cf.value != null);
+}
 
 @Injectable()
 export class DealToMatterProcessor extends BaseProcessor {
@@ -84,6 +91,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       : null;
 
     // 6. Compose final matter payload
+    const customFieldValues = extractCustomFieldValues(mapped);
     const matterData: McMatterInput = {
       name: (mapped['name'] as string) ?? props.dealname ?? 'Untitled Matter',
       clients: [{ id: Number(mycaseClientId) }],
@@ -97,6 +105,7 @@ export class DealToMatterProcessor extends BaseProcessor {
           : props.amount != null
           ? Number(props.amount)
           : undefined,
+      custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined,
     };
 
     // 7. Change detection

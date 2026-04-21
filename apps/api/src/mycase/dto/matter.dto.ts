@@ -1,3 +1,8 @@
+export interface McCustomFieldValue {
+  custom_field: { id: number };
+  value: string | number | boolean;
+}
+
 export interface McMatter {
   id: string | number;
   name: string;
@@ -10,6 +15,7 @@ export interface McMatter {
   sol_date?: string;       // ISO date
   outstanding_balance?: number;
   clients?: Array<{ id: number }>;
+  custom_field_values?: McCustomFieldValue[];
   created_at?: string;
   updated_at?: string;
 }
@@ -25,6 +31,7 @@ export interface McMatterInput {
   sol_date?: string;
   outstanding_balance?: number;
   clients?: Array<{ id: number }>;
+  custom_field_values?: McCustomFieldValue[];
 }
 
 export const MYCASE_MATTER_STATUSES = ['open', 'closed'] as const;

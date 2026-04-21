@@ -13,6 +13,7 @@ import { FieldMappingService } from './field-mapping.service';
 import { ObjectType, SyncDirection } from '@mycase-hubspot/shared-types';
 import { HubSpotPropertiesService } from '../hubspot/hubspot-properties.service';
 import { InstallationService } from '../installation/installation.service';
+import { MyCaseClientService } from '../mycase/mycase-client.service';
 
 @Controller('installations/:installationId/field-mappings')
 export class FieldMappingController {
@@ -20,6 +21,7 @@ export class FieldMappingController {
     private readonly fieldMappingService: FieldMappingService,
     private readonly propertiesService: HubSpotPropertiesService,
     private readonly installationService: InstallationService,
+    private readonly mycaseClient: MyCaseClientService,
   ) {}
 
   @Get()
@@ -96,6 +98,12 @@ export class FieldMappingController {
         body.direction,
       ),
     };
+  }
+
+  /** Returns MyCase custom fields — used to populate the field-picker dropdown. */
+  @Get('mycase-custom-fields')
+  async mycaseCustomFields(@Param('installationId') installationId: string) {
+    return this.mycaseClient.listCustomFields(installationId);
   }
 
   /** Returns HubSpot properties for the given objectType — used to populate
