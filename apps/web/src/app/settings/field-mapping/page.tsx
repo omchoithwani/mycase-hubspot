@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -99,6 +99,71 @@ const BLANK_FORM = {
   transformType: 'direct' as TransformType,
   transformConfig: '',
 };
+
+interface SearchOption { value: string; label: string; group?: string }
+
+function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder = 'Search…',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: SearchOption[];
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+  const filtered = options.filter(
+    (o) =>
+      !query ||
+      o.label.toLowerCase().includes(query.toLowerCase()) ||
+      o.value.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder={selected ? selected.label : placeholder}
+        value={open ? query : (selected?.label ?? '')}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+      />
+      {open && (
+        <ul className="absolute z-50 mt-1 w-full bg-white border rounded shadow-lg max-h-56 overflow-y-auto text-sm">
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-gray-400">No results</li>
+          ) : (
+            filtered.map((o) => (
+              <li
+                key={o.value}
+                onMouseDown={() => { onChange(o.value); setOpen(false); setQuery(''); }}
+                className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${o.value === value ? 'bg-blue-100 font-medium' : ''}`}
+              >
+                {o.group && <span className="text-gray-400 text-xs mr-1">[{o.group}]</span>}
+                {o.label}
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function FieldMappingPageContent() {
   const params = useSearchParams();
@@ -366,51 +431,34 @@ function FieldMappingPageContent() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium mb-1">HubSpot Field</label>
-                <select
+                <SearchableSelect
                   value={form.hubspotField}
-                  onChange={(e) => setForm({ ...form, hubspotField: e.target.value })}
-                  className="w-full border rounded px-2 py-1.5 text-sm"
-                >
-                  <option value="">Select a field…</option>
-                  {hsProps.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.label} ({p.name})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setForm({ ...form, hubspotField: v })}
+                  placeholder="Search HubSpot fields…"
+                  options={hsProps.map((p) => ({ value: p.name, label: `${p.label} (${p.name})` }))}
+                />
               </div>
 
               <div>
                 <label className="block text-xs font-medium mb-1">MyCase Field</label>
-                <select
+                <SearchableSelect
                   value={form.mycaseField}
-                  onChange={(e) => setForm({ ...form, mycaseField: e.target.value })}
-                  className="w-full border rounded px-2 py-1.5 text-sm"
-                >
-                  <option value="">Select a field…</option>
-                  <optgroup label="Standard Fields">
-                    {MC_FIELDS[objectType].map((f) => (
-                      <option key={f} value={f}>{f}</option>
-                    ))}
-                  </optgroup>
-                  {mcCustomFields.filter((cf) =>
-                    objectType === 'contact' ? cf.parent_type === 'client' :
-                    objectType === 'deal' ? cf.parent_type === 'case' : false
-                  ).length > 0 && (
-                    <optgroup label="Custom Fields">
-                      {mcCustomFields
-                        .filter((cf) =>
-                          objectType === 'contact' ? cf.parent_type === 'client' :
-                          objectType === 'deal' ? cf.parent_type === 'case' : false
-                        )
-                        .map((cf) => (
-                          <option key={cf.id} value={`custom_field:${cf.id}`}>
-                            {cf.name} ({cf.field_type})
-                          </option>
-                        ))}
-                    </optgroup>
-                  )}
-                </select>
+                  onChange={(v) => setForm({ ...form, mycaseField: v })}
+                  placeholder="Search MyCase fields…"
+                  options={[
+                    ...MC_FIELDS[objectType].map((f) => ({ value: f, label: f, group: 'standard' })),
+                    ...mcCustomFields
+                      .filter((cf) =>
+                        objectType === 'contact' ? cf.parent_type === 'client' :
+                        objectType === 'deal' ? cf.parent_type === 'case' : false,
+                      )
+                      .map((cf) => ({
+                        value: `custom_field:${cf.id}`,
+                        label: `${cf.name} (${cf.field_type})`,
+                        group: 'custom',
+                      })),
+                  ]}
+                />
               </div>
 
               <div>
