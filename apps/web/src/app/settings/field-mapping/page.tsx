@@ -106,6 +106,7 @@ function FieldMappingPageContent() {
 
   const [objectType, setObjectType] = useState<ObjectType>('contact');
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
+  const [search, setSearch] = useState('');
   const [hsProps, setHsProps] = useState<HsProperty[]>([]);
   const [mcCustomFields, setMcCustomFields] = useState<McCustomField[]>([]);
   const [loading, setLoading] = useState(false);
@@ -283,7 +284,7 @@ function FieldMappingPageContent() {
         {(['contact', 'deal', 'note'] as ObjectType[]).map((t) => (
           <button
             key={t}
-            onClick={() => setObjectType(t)}
+            onClick={() => { setObjectType(t); setSearch(''); }}
             className={`px-4 py-2 text-sm font-medium capitalize border-b-2 -mb-px transition-colors ${
               objectType === t
                 ? 'border-blue-600 text-blue-600'
@@ -293,6 +294,17 @@ function FieldMappingPageContent() {
             {t}
           </button>
         ))}
+      </div>
+
+      {/* Search bar */}
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search fields…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
       </div>
 
       {/* Mappings table */}
@@ -314,7 +326,10 @@ function FieldMappingPageContent() {
             </tr>
           </thead>
           <tbody>
-            {mappings.map((m) => (
+            {mappings.filter((m) => {
+              const q = search.toLowerCase();
+              return !q || m.hubspotField.toLowerCase().includes(q) || m.mycaseField.toLowerCase().includes(q);
+            }).map((m) => (
               <tr key={m.id} className="border-b hover:bg-gray-50">
                 <td className="py-2 pr-4 font-mono text-xs">{m.hubspotField}</td>
                 <td className="py-2 pr-4 font-mono text-xs">{m.mycaseField}</td>
