@@ -54,18 +54,21 @@ export class SyncOrchestrator {
     const maxAttempts = job.opts.attempts ?? SYNC_JOB_OPTIONS.attempts;
     const isFinalAttempt = payload.attempt >= maxAttempts;
 
-    this.logger.debug(
+    this.logger.log(
       `Processing job ${job.id}: ${direction} ${objectType}/${sourceId} (attempt ${payload.attempt}/${maxAttempts})`,
     );
 
     const installation = await this.installationService.findById(installationId);
     if (!installation) {
+      this.logger.warn(`Job ${job.id}: installation ${installationId} not found — skipping`);
       return { success: false, action: 'skipped', reason: 'Installation not found' };
     }
     if (!installation.syncEnabled) {
+      this.logger.log(`Job ${job.id}: sync disabled for installation ${installationId} — skipping`);
       return { success: true, action: 'skipped', reason: 'Sync is disabled for this installation' };
     }
     if (!installation.mycaseConnected) {
+      this.logger.log(`Job ${job.id}: MyCase not connected for installation ${installationId} — skipping`);
       return { success: true, action: 'skipped', reason: 'MyCase not yet connected' };
     }
 
@@ -76,6 +79,7 @@ export class SyncOrchestrator {
       direction as SyncDirection,
     );
     if (!lockAcquired) {
+      this.logger.log(`Job ${job.id}: lock blocked ${direction} ${objectType}/${sourceId} — loop prevention`);
       return {
         success: true,
         action: 'skipped',

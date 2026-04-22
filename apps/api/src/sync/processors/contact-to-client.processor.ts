@@ -81,7 +81,7 @@ export class ContactToClientProcessor extends BaseProcessor {
       sourceId,
     );
     if (existing && this.syncRecords.isSamePayload(existing, clientData as any)) {
-      this.logger.debug(`Skipping HubSpot contact ${sourceId} — payload unchanged`);
+      this.logger.log(`Skipping HubSpot contact ${sourceId} — payload unchanged (hash match)`);
       return this.skip('Payload unchanged since last sync');
     }
 
