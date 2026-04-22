@@ -81,6 +81,7 @@ export class ContactToClientProcessor extends BaseProcessor {
       sourceId,
     );
     if (existing && this.syncRecords.isSamePayload(existing, clientData as any)) {
+      this.logger.debug(`Skipping HubSpot contact ${sourceId} — payload unchanged`);
       return this.skip('Payload unchanged since last sync');
     }
 
@@ -125,8 +126,10 @@ export class ContactToClientProcessor extends BaseProcessor {
       action = 'created';
       this.logger.log(`Created MyCase client ${mycaseId} from HubSpot contact ${sourceId}`);
     } else {
+      this.logger.log(`Updating MyCase client ${mycaseId} from HubSpot contact ${sourceId}`);
       await this.mycase.updateClient(installationId, mycaseId, clientData);
       action = 'updated';
+      this.logger.log(`Updated MyCase client ${mycaseId} from HubSpot contact ${sourceId}`);
     }
 
     // 7. Upsert sync record
