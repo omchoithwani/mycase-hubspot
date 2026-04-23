@@ -103,7 +103,9 @@ export class SyncOrchestrator {
         result = await processor.process(payload);
       }
 
-      if (result.action === 'skipped') {
+      if (result.action === 'skipped' && result.reason === 'Payload unchanged since last sync') {
+        await this.syncJobService.delete(dbJob.id);
+      } else if (result.action === 'skipped') {
         await this.syncJobService.markSkipped(dbJob.id, result.reason ?? '');
       } else if (result.success) {
         await this.syncJobService.markSuccess(dbJob.id, result);

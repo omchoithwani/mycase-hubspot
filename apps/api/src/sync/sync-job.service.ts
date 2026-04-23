@@ -34,6 +34,10 @@ export class SyncJobService {
     });
   }
 
+  async delete(jobId: string): Promise<void> {
+    await this.repo.delete(jobId);
+  }
+
   async markSkipped(jobId: string, reason: string): Promise<void> {
     await this.repo.update(jobId, {
       status: 'skipped',
