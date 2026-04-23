@@ -9,13 +9,13 @@ const SEED_RULES: Array<{
   labelContains: string[];
   mycaseStatus: string;
 }> = [
-  { labelContains: ['won', 'closed won', 'close won'],       mycaseStatus: 'Closed' },
-  { labelContains: ['lost', 'closed lost', 'disqualified'],  mycaseStatus: 'Closed' },
-  { labelContains: ['pending', 'proposal', 'decision'],       mycaseStatus: 'Pending' },
-  { labelContains: ['hold', 'on hold', 'paused'],             mycaseStatus: 'On Hold' },
+  { labelContains: ['won', 'closed won', 'close won'],       mycaseStatus: 'closed' },
+  { labelContains: ['lost', 'closed lost', 'disqualified'],  mycaseStatus: 'closed' },
+  { labelContains: ['pending', 'proposal', 'decision'],       mycaseStatus: 'open' },
+  { labelContains: ['hold', 'on hold', 'paused'],             mycaseStatus: 'open' },
 ];
 
-const DEFAULT_MYCASE_STATUS = 'Open';
+const DEFAULT_MYCASE_STATUS = 'open';
 
 @Injectable()
 export class StageMappingService {

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
-const MC_STATUSES = ['Open', 'Pending', 'Closed', 'On Hold'];
+const MC_STATUSES = ['open', 'closed'];
 
 interface HsStage {
   id: string;
@@ -85,7 +85,7 @@ function StageMappingPageContent() {
       const existing = mappings.find(
         (m) => m.hubspotPipelineId === selectedPipeline && m.hubspotStageId === stage.id,
       );
-      next[stage.id] = existing?.mycaseStatus ?? 'Open';
+      next[stage.id] = existing?.mycaseStatus ?? 'open';
     }
     setDrafts(next);
   }, [selectedPipeline, pipelines, mappings]);
@@ -100,7 +100,7 @@ function StageMappingPageContent() {
         hubspotPipelineId: selectedPipeline,
         hubspotStageId: stage.id,
         hubspotStageLabel: stage.label,
-        mycaseStatus: drafts[stage.id] ?? 'Open',
+        mycaseStatus: drafts[stage.id] ?? 'open',
         direction: 'both',
       }));
       const res = await fetch(`${API}/installations/${installationId}/stage-mappings`, {
@@ -182,7 +182,7 @@ function StageMappingPageContent() {
                 <td className="py-2 pr-6">{stage.label}</td>
                 <td className="py-2">
                   <select
-                    value={drafts[stage.id] ?? 'Open'}
+                    value={drafts[stage.id] ?? 'open'}
                     onChange={(e) =>
                       setDrafts((prev) => ({ ...prev, [stage.id]: e.target.value }))
                     }
