@@ -103,7 +103,7 @@ export class SyncOrchestrator {
         result = await processor.process(payload);
       }
 
-      if (result.action === 'skipped' && result.reason === 'Payload unchanged since last sync') {
+      if (result.action === 'skipped' && this.isSilentSkip(result.reason)) {
         await this.syncJobService.delete(dbJob.id);
       } else if (result.action === 'skipped') {
         await this.syncJobService.markSkipped(dbJob.id, result.reason ?? '');
@@ -147,5 +147,14 @@ export class SyncOrchestrator {
     }
 
     return result;
+  }
+
+  private isSilentSkip(reason: string | undefined): boolean {
+    if (!reason) return false;
+    return (
+      reason === 'Payload unchanged since last sync' ||
+      reason.startsWith('Linked to existing') ||
+      reason.startsWith('Sync lock held')
+    );
   }
 }
