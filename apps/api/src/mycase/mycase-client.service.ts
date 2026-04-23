@@ -115,6 +115,11 @@ export class MyCaseClientService {
           `MyCase resource not found: ${axiosErr.config?.baseURL}${axiosErr.config?.url}`,
         );
       }
+      if (axiosErr.response?.status === 422) {
+        this.logger.error(
+          `MyCase 422 — URL: ${axiosErr.config?.baseURL}${axiosErr.config?.url} — request: ${axiosErr.config?.data} — response: ${JSON.stringify(axiosErr.response?.data)}`,
+        );
+      }
       if (axiosErr.response?.status === 401) {
         throw new UnauthorizedException('MyCase authentication failed');
       }

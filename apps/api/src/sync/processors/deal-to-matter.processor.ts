@@ -145,6 +145,7 @@ export class DealToMatterProcessor extends BaseProcessor {
         return this.skip(`Linked to existing MyCase matter (${dupResult.confidence} match)`);
       }
 
+      this.logger.log(`Creating MyCase matter — payload: ${JSON.stringify(matterData)}`);
       const created = await this.mycase.createMatter(installationId, matterData);
       mycaseId = String(created.id);
       action = 'created';
