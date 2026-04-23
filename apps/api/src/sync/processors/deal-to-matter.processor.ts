@@ -95,7 +95,7 @@ export class DealToMatterProcessor extends BaseProcessor {
     const matterData: McMatterInput = {
       name: (mapped['name'] as string) ?? props.dealname ?? 'Untitled Matter',
       clients: [{ id: Number(mycaseClientId) }],
-      status: mycaseStatus ?? 'open',
+      status: (mycaseStatus ?? 'open').toLowerCase() as 'open' | 'closed',
       case_stage: mapped['case_stage'] as string | undefined,
       description: mapped['description'] as string | undefined,
       opened_date: mapped['opened_date'] as string | undefined,
