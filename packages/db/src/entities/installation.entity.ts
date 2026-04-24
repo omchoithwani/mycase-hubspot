@@ -42,6 +42,9 @@ export class Installation {
   @Column({ name: 'sync_enabled', type: 'boolean', default: false })
   syncEnabled: boolean;
 
+  @Column({ name: 'sync_historical_data', type: 'boolean', default: false })
+  syncHistoricalData: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

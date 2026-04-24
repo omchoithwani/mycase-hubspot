@@ -50,9 +50,10 @@ export class MyCasePollerService {
   }
 
   private async pollInstallation(installationId: string): Promise<void> {
+    const installation = await this.installationService.findByIdOrFail(installationId);
     await Promise.all([
-      this.pollObjectType(installationId, 'client', 'contact'),
-      this.pollObjectType(installationId, 'matter', 'deal'),
+      this.pollObjectType(installationId, 'client', 'contact', installation.syncHistoricalData),
+      this.pollObjectType(installationId, 'matter', 'deal', installation.syncHistoricalData),
     ]);
   }
 
@@ -60,8 +61,9 @@ export class MyCasePollerService {
     installationId: string,
     mycaseType: 'client' | 'matter',
     syncObjectType: 'contact' | 'deal',
+    syncHistoricalData = false,
   ): Promise<void> {
-    const cursor = await this.getOrCreateCursor(installationId, mycaseType);
+    const cursor = await this.getOrCreateCursor(installationId, mycaseType, syncHistoricalData);
     const since = cursor.lastPolledAt;
     const pollStart = new Date();
 
@@ -113,18 +115,19 @@ export class MyCasePollerService {
   private async getOrCreateCursor(
     installationId: string,
     objectType: string,
+    syncHistoricalData = false,
   ): Promise<PollingCursor> {
     let cursor = await this.cursorRepo.findOne({
       where: { installationId, objectType },
     });
 
     if (!cursor) {
-      // First poll — start from 24 hours ago to catch recent records
-      cursor = this.cursorRepo.create({
-        installationId,
-        objectType,
-        lastPolledAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      });
+      // If syncHistoricalData is enabled, start from epoch to pull all records.
+      // Otherwise start from now so only new changes are picked up.
+      const lastPolledAt = syncHistoricalData
+        ? new Date(0)
+        : new Date();
+      cursor = this.cursorRepo.create({ installationId, objectType, lastPolledAt });
       cursor = await this.cursorRepo.save(cursor);
     }
 

@@ -90,6 +90,12 @@ export class InstallationService {
     return this.repo.save(installation);
   }
 
+  async setSyncHistoricalData(id: string, syncHistoricalData: boolean): Promise<Installation> {
+    const installation = await this.findByIdOrFail(id);
+    installation.syncHistoricalData = syncHistoricalData;
+    return this.repo.save(installation);
+  }
+
   async findAllActive(): Promise<Installation[]> {
     return this.repo.find({
       where: { syncEnabled: true, mycaseConnected: true },

@@ -13,6 +13,7 @@ export class InstallationController {
       hubspotPortalId: inst.hubspotPortalId,
       mycaseConnected: inst.mycaseConnected,
       syncEnabled: inst.syncEnabled,
+      syncHistoricalData: inst.syncHistoricalData,
       createdAt: inst.createdAt,
     };
   }
@@ -24,5 +25,14 @@ export class InstallationController {
   ) {
     const inst = await this.service.setSyncEnabled(id, enabled);
     return { id: inst.id, syncEnabled: inst.syncEnabled };
+  }
+
+  @Patch(':id/sync-historical-data')
+  async setSyncHistoricalData(
+    @Param('id') id: string,
+    @Body('syncHistoricalData') syncHistoricalData: boolean,
+  ) {
+    const inst = await this.service.setSyncHistoricalData(id, syncHistoricalData);
+    return { id: inst.id, syncHistoricalData: inst.syncHistoricalData };
   }
 }

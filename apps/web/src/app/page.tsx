@@ -11,6 +11,7 @@ interface Installation {
   hubspotPortalId: string;
   mycaseConnected: boolean;
   syncEnabled: boolean;
+  syncHistoricalData: boolean;
 }
 
 interface Stats {
@@ -46,6 +47,7 @@ function DashboardContent() {
   const [installation, setInstallation] = useState<Installation | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [toggling, setToggling] = useState(false);
+  const [togglingHistorical, setTogglingHistorical] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
 
   useEffect(() => {
@@ -79,6 +81,24 @@ function DashboardContent() {
     }
   };
 
+  const toggleHistoricalData = async () => {
+    if (!installation) return;
+    setTogglingHistorical(true);
+    try {
+      const res = await fetch(`${API_BASE}/installations/${installation.id}/sync-historical-data`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syncHistoricalData: !installation.syncHistoricalData }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { syncHistoricalData: boolean };
+        setInstallation((prev) => (prev ? { ...prev, syncHistoricalData: data.syncHistoricalData } : prev));
+      }
+    } finally {
+      setTogglingHistorical(false);
+    }
+  };
+
   return (
     <div className="p-8 max-w-5xl">
       {/* Page header */}
@@ -90,20 +110,39 @@ function DashboardContent() {
           </p>
         </div>
         {installation && (
-          <button
-            onClick={() => void toggleSync()}
-            disabled={toggling}
-            className={`flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-colors disabled:opacity-50 ${
-              installation.syncEnabled
-                ? 'bg-green-500 hover:bg-green-600 text-white'
-                : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              {installation.syncEnabled ? 'pause_circle' : 'play_circle'}
-            </span>
-            {toggling ? '…' : installation.syncEnabled ? 'Sync Enabled' : 'Sync Paused'}
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Historical data toggle */}
+            <button
+              onClick={() => void toggleHistoricalData()}
+              disabled={togglingHistorical}
+              title={installation.syncHistoricalData ? 'Historical sync on — click to sync new records only' : 'Historical sync off — click to also sync past records'}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 ${
+                installation.syncHistoricalData
+                  ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                {installation.syncHistoricalData ? 'history_toggle_off' : 'history'}
+              </span>
+              {togglingHistorical ? '…' : installation.syncHistoricalData ? 'Historical: On' : 'Historical: Off'}
+            </button>
+            {/* Sync enable/disable */}
+            <button
+              onClick={() => void toggleSync()}
+              disabled={toggling}
+              className={`flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-colors disabled:opacity-50 ${
+                installation.syncEnabled
+                  ? 'bg-green-500 hover:bg-green-600 text-white'
+                  : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                {installation.syncEnabled ? 'pause_circle' : 'play_circle'}
+              </span>
+              {toggling ? '…' : installation.syncEnabled ? 'Sync Enabled' : 'Sync Paused'}
+            </button>
+          </div>
         )}
       </div>
 
