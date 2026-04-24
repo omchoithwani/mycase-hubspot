@@ -300,6 +300,7 @@ function SyncCriteriaContent() {
   // HubSpot properties for the field picker
   const [hsProperties, setHsProperties] = useState<HsProperty[]>([]);
   const [loadingProps, setLoadingProps] = useState(false);
+  const [propsError, setPropsError] = useState('');
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -324,12 +325,19 @@ function SyncCriteriaContent() {
   const fetchProperties = useCallback(async (ot: ObjectType) => {
     if (!installationId) return;
     setLoadingProps(true);
+    setPropsError('');
     try {
       const res = await fetch(
         `${API}/installations/${installationId}/field-mappings/hubspot-properties?objectType=${ot2api(ot)}`,
       );
-      if (res.ok) setHsProperties((await res.json()) as HsProperty[]);
-    } catch { /* silent */ } finally {
+      if (res.ok) {
+        setHsProperties((await res.json()) as HsProperty[]);
+      } else {
+        setPropsError(`API error ${res.status}: ${res.statusText}`);
+      }
+    } catch (e: unknown) {
+      setPropsError(e instanceof Error ? e.message : 'Failed to load fields');
+    } finally {
       setLoadingProps(false);
     }
   }, [installationId]);
@@ -735,6 +743,12 @@ function SyncCriteriaContent() {
                   <div className="text-xs text-slate-400 flex items-center gap-1.5 mb-2">
                     <span className="material-symbols-outlined text-[14px] animate-spin">autorenew</span>
                     Loading fields…
+                  </div>
+                )}
+                {propsError && !loadingProps && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex items-start gap-2 mb-2">
+                    <span className="material-symbols-outlined text-[14px] flex-shrink-0 mt-0.5">error_outline</span>
+                    <span>Could not load HubSpot fields: {propsError}. Check that the API is reachable and CORS is configured.</span>
                   </div>
                 )}
 
