@@ -1,13 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Installation } from '@mycase-hubspot/db';
+import { Installation, PollingCursor } from '@mycase-hubspot/db';
 
 @Injectable()
 export class InstallationService {
   constructor(
     @InjectRepository(Installation)
     private readonly repo: Repository<Installation>,
+    @InjectRepository(PollingCursor)
+    private readonly cursorRepo: Repository<PollingCursor>,
   ) {}
 
   async findByPortalId(portalId: string): Promise<Installation | null> {
@@ -87,13 +89,23 @@ export class InstallationService {
   async setSyncEnabled(id: string, enabled: boolean): Promise<Installation> {
     const installation = await this.findByIdOrFail(id);
     installation.syncEnabled = enabled;
-    return this.repo.save(installation);
+    const saved = await this.repo.save(installation);
+    // Always reset cursors when enabling sync so the poller starts from the
+    // correct point (now if syncHistoricalData=false, epoch if true).
+    // Stale cursors from a previous session would otherwise replay old data.
+    if (enabled) {
+      await this.cursorRepo.delete({ installationId: id });
+    }
+    return saved;
   }
 
   async setSyncHistoricalData(id: string, syncHistoricalData: boolean): Promise<Installation> {
     const installation = await this.findByIdOrFail(id);
     installation.syncHistoricalData = syncHistoricalData;
-    return this.repo.save(installation);
+    const saved = await this.repo.save(installation);
+    // Reset cursors so the next poll starts from the right anchor point.
+    await this.cursorRepo.delete({ installationId: id });
+    return saved;
   }
 
   async findAllActive(): Promise<Installation[]> {
