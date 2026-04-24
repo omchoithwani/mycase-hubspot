@@ -34,7 +34,6 @@ const OPS_TEXT = ['EQ','NEQ','CONTAINS','NOT_CONTAINS','STARTS_WITH','ENDS_WITH'
 const OPS_NUMBER = ['EQ','NEQ','GT','GTE','LT','LTE','BETWEEN','HAS_PROPERTY','NOT_HAS_PROPERTY'];
 const OPS_ENUM = ['EQ','NEQ','IN','NOT_IN','HAS_PROPERTY','NOT_HAS_PROPERTY'];
 const OPS_BOOL = ['EQ','NEQ','HAS_PROPERTY','NOT_HAS_PROPERTY'];
-const OPS_DATE = ['EQ','NEQ','GT','GTE','LT','LTE','HAS_PROPERTY','NOT_HAS_PROPERTY'];
 const OPS_ALL = ['EQ','NEQ','CONTAINS','NOT_CONTAINS','STARTS_WITH','ENDS_WITH','GT','GTE','LT','LTE','BETWEEN','IN','NOT_IN','HAS_PROPERTY','NOT_HAS_PROPERTY'];
 
 const ALL_OPERATORS: { value: string; label: string; noValue?: boolean }[] = [
@@ -55,23 +54,64 @@ const ALL_OPERATORS: { value: string; label: string; noValue?: boolean }[] = [
   { value: 'NOT_HAS_PROPERTY', label: 'has no value', noValue: true },
 ];
 
-const OP_MAP = Object.fromEntries(ALL_OPERATORS.map((o) => [o.value, o]));
+// Date-specific operators (separate list, not part of ALL_OPERATORS)
+const DATE_OPERATORS: { value: string; label: string; noValue?: boolean }[] = [
+  { value: 'DATE_IS', label: 'is' },
+  { value: 'DATE_EQ', label: 'is equal to' },
+  { value: 'DATE_BEFORE', label: 'is before' },
+  { value: 'DATE_AFTER', label: 'is after' },
+  { value: 'DATE_BETWEEN', label: 'is between' },
+  { value: 'DATE_GT_DAYS', label: 'is more than X days ago' },
+  { value: 'DATE_LT_DAYS', label: 'is less than X days ago' },
+  { value: 'HAS_PROPERTY', label: 'is known', noValue: true },
+  { value: 'NOT_HAS_PROPERTY', label: 'is unknown', noValue: true },
+];
 
-function getOpsForType(type: string): typeof ALL_OPERATORS {
+const DATE_PRESETS: { label: string; value: string; divider?: boolean }[] = [
+  { label: 'Yesterday', value: 'yesterday' },
+  { label: 'Today', value: 'today' },
+  { label: 'Tomorrow', value: 'tomorrow' },
+  { label: '— Week', value: '', divider: true },
+  { label: 'Last week', value: 'last_week' },
+  { label: 'This week', value: 'this_week' },
+  { label: '— Month', value: '', divider: true },
+  { label: 'Last month', value: 'last_month' },
+  { label: 'This month', value: 'this_month' },
+  { label: '— Quarter', value: '', divider: true },
+  { label: 'Last quarter', value: 'last_quarter' },
+  { label: 'This quarter', value: 'this_quarter' },
+  { label: 'Last fiscal quarter', value: 'last_fiscal_quarter' },
+  { label: 'This fiscal quarter', value: 'this_fiscal_quarter' },
+  { label: '— Year', value: '', divider: true },
+  { label: 'Last year', value: 'last_year' },
+  { label: 'This year', value: 'this_year' },
+  { label: 'Last fiscal year', value: 'last_fiscal_year' },
+  { label: 'This fiscal year', value: 'this_fiscal_year' },
+];
+
+// Combined lookup for noValue check (covers both normal + date ops)
+const ALL_OP_MAP = Object.fromEntries(
+  [...ALL_OPERATORS, ...DATE_OPERATORS].map((o) => [o.value, o]),
+);
+const OP_MAP = ALL_OP_MAP;
+
+function isDateType(type: string, fieldType: string): boolean {
+  return type === 'date' || type === 'datetime' || fieldType === 'date';
+}
+
+function getOpsForType(type: string, fieldType = ''): typeof ALL_OPERATORS {
+  if (isDateType(type, fieldType)) return DATE_OPERATORS;
   let allowed: string[];
   if (type === 'enumeration') allowed = OPS_ENUM;
   else if (type === 'number') allowed = OPS_NUMBER;
   else if (type === 'bool') allowed = OPS_BOOL;
-  else if (type === 'date' || type === 'datetime') allowed = OPS_DATE;
   else if (type === 'string' || type === 'phone_number' || type === 'email') allowed = OPS_TEXT;
   else allowed = OPS_ALL;
   return ALL_OPERATORS.filter((o) => allowed.includes(o.value));
 }
 
-function defaultOpForType(type: string): string {
-  if (type === 'enumeration') return 'EQ';
-  if (type === 'bool') return 'EQ';
-  if (type === 'number') return 'EQ';
+function defaultOpForType(type: string, fieldType = ''): string {
+  if (isDateType(type, fieldType)) return 'DATE_IS';
   return 'EQ';
 }
 
@@ -161,6 +201,70 @@ function FieldPicker({
   );
 }
 
+// ── Date value input ──────────────────────────────────────────────────────────
+
+function DateValueInput({ filter, onChange }: { filter: SyncFilter; onChange: (v: string) => void }) {
+  const cls = 'flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0';
+
+  if (filter.operator === 'DATE_IS') {
+    return (
+      <select value={filter.value} onChange={(e) => onChange(e.target.value)} className={cls}>
+        <option value="">Select period…</option>
+        {DATE_PRESETS.map((p, i) =>
+          p.divider ? (
+            <option key={i} disabled value="">{p.label}</option>
+          ) : (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ),
+        )}
+      </select>
+    );
+  }
+
+  if (filter.operator === 'DATE_EQ' || filter.operator === 'DATE_BEFORE' || filter.operator === 'DATE_AFTER') {
+    return (
+      <input
+        type="date"
+        value={filter.value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cls}
+      />
+    );
+  }
+
+  if (filter.operator === 'DATE_BETWEEN') {
+    const parts = filter.value.split(',');
+    const lo = parts[0] ?? '';
+    const hi = parts[1] ?? '';
+    return (
+      <div className="flex gap-1 flex-1 items-center">
+        <input type="date" value={lo} onChange={(e) => onChange(`${e.target.value},${hi}`)} className={cls} />
+        <span className="text-xs text-slate-400 flex-shrink-0">and</span>
+        <input type="date" value={hi} onChange={(e) => onChange(`${lo},${e.target.value}`)} className={cls} />
+      </div>
+    );
+  }
+
+  if (filter.operator === 'DATE_GT_DAYS' || filter.operator === 'DATE_LT_DAYS') {
+    return (
+      <div className="flex gap-1 flex-1 items-center">
+        <input
+          type="number"
+          min="0"
+          placeholder="7"
+          value={filter.value}
+          onChange={(e) => onChange(e.target.value)}
+          className={cls}
+          style={{ width: '80px', flex: 'none' }}
+        />
+        <span className="text-xs text-slate-500 flex-shrink-0">days ago</span>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ── Smart value input ─────────────────────────────────────────────────────────
 
 function ValueInput({
@@ -175,7 +279,12 @@ function ValueInput({
   const opDef = OP_MAP[filter.operator];
   if (opDef?.noValue) return null;
 
-  const options = property?.options ?? [];
+  // Date field: delegate to DateValueInput
+  if (property && isDateType(property.type, property.fieldType)) {
+    return <DateValueInput filter={filter} onChange={onChange} />;
+  }
+
+  const options = (property?.options ?? []).filter((o) => !(o as { hidden?: boolean }).hidden);
   const isEnum = property?.type === 'enumeration' && options.length > 0;
   const isBool = property?.type === 'bool';
   const isNumber = property?.type === 'number';
@@ -195,24 +304,10 @@ function ValueInput({
       <div className="flex-1 border border-slate-200 rounded-lg bg-white p-2 max-h-32 overflow-y-auto">
         {options.map((opt) => (
           <label key={opt.value} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 px-1 py-0.5 rounded">
-            <input
-              type="checkbox"
-              checked={selected.has(opt.value)}
-              onChange={() => toggle(opt.value)}
-              className="accent-blue-600"
-            />
+            <input type="checkbox" checked={selected.has(opt.value)} onChange={() => toggle(opt.value)} className="accent-blue-600" />
             <span className="text-slate-700">{opt.label}</span>
           </label>
         ))}
-        {options.length === 0 && (
-          <input
-            type="text"
-            value={filter.value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="value1,value2"
-            className="w-full text-xs focus:outline-none"
-          />
-        )}
       </div>
     );
   }
@@ -255,21 +350,9 @@ function ValueInput({
     const hi = parts[1] ?? '';
     return (
       <div className="flex gap-1 flex-1">
-        <input
-          type="number"
-          placeholder="min"
-          value={lo}
-          onChange={(e) => onChange(`${e.target.value},${hi}`)}
-          className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
-        />
+        <input type="number" placeholder="min" value={lo} onChange={(e) => onChange(`${e.target.value},${hi}`)} className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0" />
         <span className="text-xs text-slate-400 self-center">–</span>
-        <input
-          type="number"
-          placeholder="max"
-          value={hi}
-          onChange={(e) => onChange(`${lo},${e.target.value}`)}
-          className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
-        />
+        <input type="number" placeholder="max" value={hi} onChange={(e) => onChange(`${lo},${e.target.value}`)} className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0" />
       </div>
     );
   }
@@ -393,7 +476,7 @@ function SyncCriteriaContent() {
   // When field changes, reset operator to sensible default for the field type
   function handleFieldChange(gi: number, fi: number, fieldName: string) {
     const prop = hsProperties.find((p) => p.name === fieldName);
-    const op = prop ? defaultOpForType(prop.type) : 'EQ';
+    const op = prop ? defaultOpForType(prop.type, prop.fieldType) : 'EQ';
     updateFilter(gi, fi, { field: fieldName, operator: op, value: '' });
   }
 
@@ -773,7 +856,7 @@ function SyncCriteriaContent() {
                         <div className="space-y-2">
                           {group.filters.map((filter, fi) => {
                             const prop = hsProperties.find((p) => p.name === filter.field);
-                            const opsForField = prop ? getOpsForType(prop.type) : ALL_OPERATORS;
+                            const opsForField = prop ? getOpsForType(prop.type, prop.fieldType) : ALL_OPERATORS;
                             return (
                               <div key={fi} className="flex gap-2 items-start">
                                 {/* Field picker */}
