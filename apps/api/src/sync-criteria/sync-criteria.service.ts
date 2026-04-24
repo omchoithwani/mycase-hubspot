@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { SyncCriteria } from '@mycase-hubspot/db';
+import { SyncCriteria, SyncFilterGroup } from '@mycase-hubspot/db';
 import { CriteriaEvaluatorService } from './criteria-evaluator.service';
 
 export type SourceSystem = 'hubspot' | 'mycase';
@@ -14,16 +14,12 @@ export class SyncCriteriaService {
     private readonly evaluator: CriteriaEvaluatorService,
   ) {}
 
-  // ── CRUD ──────────────────────────────────────────────────────────────────
-
   async list(
     installationId: string,
     objectType?: string,
     sourceSystem?: SourceSystem,
   ): Promise<SyncCriteria[]> {
-    const where: { installationId: string; objectType?: string; sourceSystem?: string } = {
-      installationId,
-    };
+    const where: Record<string, unknown> = { installationId };
     if (objectType) where.objectType = objectType;
     if (sourceSystem) where.sourceSystem = sourceSystem;
     return this.repo.find({ where, order: { createdAt: 'ASC' } });
@@ -35,8 +31,7 @@ export class SyncCriteriaService {
       objectType: string;
       sourceSystem: SourceSystem;
       ruleName?: string;
-      logicOperator?: 'AND' | 'OR';
-      conditions: Array<{ field: string; operator: string; value?: unknown }>;
+      filterGroups: SyncFilterGroup[];
     },
   ): Promise<SyncCriteria> {
     const entity = this.repo.create({
@@ -44,8 +39,8 @@ export class SyncCriteriaService {
       objectType: data.objectType,
       sourceSystem: data.sourceSystem,
       ruleName: data.ruleName ?? null,
-      logicOperator: data.logicOperator ?? 'AND',
-      conditions: data.conditions,
+      logicOperator: 'AND',
+      conditions: data.filterGroups,
       isActive: true,
     });
     return this.repo.save(entity);
@@ -56,20 +51,21 @@ export class SyncCriteriaService {
     installationId: string,
     data: Partial<{
       ruleName: string;
-      logicOperator: 'AND' | 'OR';
-      conditions: Array<{ field: string; operator: string; value?: unknown }>;
+      filterGroups: SyncFilterGroup[];
       isActive: boolean;
     }>,
   ): Promise<SyncCriteria> {
-    await this.repo.update({ id, installationId }, data as any);
+    const patch: Record<string, unknown> = {};
+    if (data.ruleName !== undefined) patch.ruleName = data.ruleName;
+    if (data.filterGroups !== undefined) patch.conditions = data.filterGroups;
+    if (data.isActive !== undefined) patch.isActive = data.isActive;
+    await this.repo.update({ id, installationId }, patch as any);
     return this.repo.findOneOrFail({ where: { id } });
   }
 
   async remove(id: string, installationId: string): Promise<void> {
     await this.repo.delete({ id, installationId });
   }
-
-  // ── Evaluation ────────────────────────────────────────────────────────────
 
   async evaluate(
     installationId: string,
@@ -81,13 +77,11 @@ export class SyncCriteriaService {
       where: { installationId, objectType, sourceSystem, isActive: true },
     });
     if (rules.length === 0) return true;
-
     return this.evaluator.evaluateAll(
       rules.map((r) => ({
         id: r.id,
         ruleName: r.ruleName,
-        logicOperator: r.logicOperator as 'AND' | 'OR',
-        conditions: r.conditions as Array<{ field: string; operator: any; value?: unknown }>,
+        filterGroups: r.conditions as SyncFilterGroup[],
       })),
       record,
     );
@@ -103,8 +97,7 @@ export class SyncCriteriaService {
       {
         id: rule.id,
         ruleName: rule.ruleName,
-        logicOperator: rule.logicOperator as 'AND' | 'OR',
-        conditions: rule.conditions as Array<{ field: string; operator: any; value?: unknown }>,
+        filterGroups: rule.conditions as SyncFilterGroup[],
       },
       record,
     );

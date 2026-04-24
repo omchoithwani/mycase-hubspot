@@ -6,6 +6,16 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+export interface SyncFilter {
+  field: string;
+  operator: string;
+  value?: unknown;
+}
+
+export interface SyncFilterGroup {
+  filters: SyncFilter[];
+}
+
 @Entity('sync_criteria')
 export class SyncCriteria {
   @PrimaryGeneratedColumn('uuid')
@@ -26,12 +36,9 @@ export class SyncCriteria {
   @Column({ name: 'logic_operator', type: 'varchar', length: 5, default: 'AND' })
   logicOperator: string;
 
+  /** Stores filter groups. OR between groups, AND within each group's filters. */
   @Column({ name: 'conditions', type: 'jsonb' })
-  conditions: Array<{
-    field: string;
-    operator: string;
-    value: unknown;
-  }>;
+  conditions: SyncFilterGroup[];
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

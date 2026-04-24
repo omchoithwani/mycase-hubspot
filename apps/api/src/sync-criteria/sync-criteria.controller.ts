@@ -33,11 +33,10 @@ export class SyncCriteriaController {
       objectType: string;
       sourceSystem: SourceSystem;
       ruleName?: string;
-      logicOperator?: 'AND' | 'OR';
-      conditions: Array<{ field: string; operator: string; value?: unknown }>;
+      filterGroups: Array<{ filters: Array<{ field: string; operator: string; value?: unknown }> }>;
     },
   ) {
-    return this.service.create(installationId, body);
+    return this.service.create(installationId, body as any);
   }
 
   @Patch(':ruleId')
@@ -47,12 +46,11 @@ export class SyncCriteriaController {
     @Body()
     body: Partial<{
       ruleName: string;
-      logicOperator: 'AND' | 'OR';
-      conditions: Array<{ field: string; operator: string; value?: unknown }>;
+      filterGroups: Array<{ filters: Array<{ field: string; operator: string; value?: unknown }> }>;
       isActive: boolean;
     }>,
   ) {
-    return this.service.update(ruleId, installationId, body);
+    return this.service.update(ruleId, installationId, body as any);
   }
 
   @Delete(':ruleId')
