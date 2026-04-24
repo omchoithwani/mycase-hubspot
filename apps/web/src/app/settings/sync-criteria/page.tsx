@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -8,16 +8,18 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 type ObjectType = 'contact' | 'deal' | 'note';
 type SourceSystem = 'hubspot' | 'mycase';
 
-interface SyncFilter {
-  field: string;
-  operator: string;
-  value: string;
+interface HsPropertyOption { label: string; value: string }
+interface HsProperty {
+  name: string;
+  label: string;
+  type: string;      // 'string' | 'number' | 'enumeration' | 'bool' | 'date' | 'datetime'
+  fieldType: string;
+  groupName: string;
+  options?: HsPropertyOption[];
 }
 
-interface SyncFilterGroup {
-  filters: SyncFilter[];
-}
-
+interface SyncFilter { field: string; operator: string; value: string }
+interface SyncFilterGroup { filters: SyncFilter[] }
 interface SyncCriteriaRule {
   id: string;
   objectType: string;
@@ -27,7 +29,15 @@ interface SyncCriteriaRule {
   isActive: boolean;
 }
 
-const OPERATORS: { value: string; label: string; noValue?: boolean }[] = [
+// Operators available per field type
+const OPS_TEXT = ['EQ','NEQ','CONTAINS','NOT_CONTAINS','STARTS_WITH','ENDS_WITH','HAS_PROPERTY','NOT_HAS_PROPERTY'];
+const OPS_NUMBER = ['EQ','NEQ','GT','GTE','LT','LTE','BETWEEN','HAS_PROPERTY','NOT_HAS_PROPERTY'];
+const OPS_ENUM = ['EQ','NEQ','IN','NOT_IN','HAS_PROPERTY','NOT_HAS_PROPERTY'];
+const OPS_BOOL = ['EQ','NEQ','HAS_PROPERTY','NOT_HAS_PROPERTY'];
+const OPS_DATE = ['EQ','NEQ','GT','GTE','LT','LTE','HAS_PROPERTY','NOT_HAS_PROPERTY'];
+const OPS_ALL = ['EQ','NEQ','CONTAINS','NOT_CONTAINS','STARTS_WITH','ENDS_WITH','GT','GTE','LT','LTE','BETWEEN','IN','NOT_IN','HAS_PROPERTY','NOT_HAS_PROPERTY'];
+
+const ALL_OPERATORS: { value: string; label: string; noValue?: boolean }[] = [
   { value: 'EQ', label: 'is equal to' },
   { value: 'NEQ', label: 'is not equal to' },
   { value: 'CONTAINS', label: 'contains' },
@@ -45,13 +55,24 @@ const OPERATORS: { value: string; label: string; noValue?: boolean }[] = [
   { value: 'NOT_HAS_PROPERTY', label: 'has no value', noValue: true },
 ];
 
-const OP_MAP = Object.fromEntries(OPERATORS.map((o) => [o.value, o]));
+const OP_MAP = Object.fromEntries(ALL_OPERATORS.map((o) => [o.value, o]));
 
-function valuePlaceholder(op: string): string {
-  if (op === 'BETWEEN') return 'e.g. 1000,5000';
-  if (op === 'IN' || op === 'NOT_IN') return 'e.g. lead,customer';
-  if (['GT', 'GTE', 'LT', 'LTE'].includes(op)) return 'number';
-  return 'value';
+function getOpsForType(type: string): typeof ALL_OPERATORS {
+  let allowed: string[];
+  if (type === 'enumeration') allowed = OPS_ENUM;
+  else if (type === 'number') allowed = OPS_NUMBER;
+  else if (type === 'bool') allowed = OPS_BOOL;
+  else if (type === 'date' || type === 'datetime') allowed = OPS_DATE;
+  else if (type === 'string' || type === 'phone_number' || type === 'email') allowed = OPS_TEXT;
+  else allowed = OPS_ALL;
+  return ALL_OPERATORS.filter((o) => allowed.includes(o.value));
+}
+
+function defaultOpForType(type: string): string {
+  if (type === 'enumeration') return 'EQ';
+  if (type === 'bool') return 'EQ';
+  if (type === 'number') return 'EQ';
+  return 'EQ';
 }
 
 function serializeValue(op: string, raw: string): unknown {
@@ -68,17 +89,204 @@ function serializeValue(op: string, raw: string): unknown {
 
 function deserializeValue(op: string, val: unknown): string {
   if (val == null) return '';
-  if (Array.isArray(val)) return (val as unknown[]).join(', ');
+  if (Array.isArray(val)) return (val as unknown[]).join(',');
   return String(val);
 }
 
-function blankFilter(): SyncFilter {
-  return { field: '', operator: 'EQ', value: '' };
+function blankFilter(): SyncFilter { return { field: '', operator: 'EQ', value: '' }; }
+function blankGroup(): SyncFilterGroup { return { filters: [blankFilter()] }; }
+
+// ── Searchable field picker ────────────────────────────────────────────────────
+
+function FieldPicker({
+  value,
+  onChange,
+  properties,
+  loading,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  properties: HsProperty[];
+  loading: boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, []);
+
+  const selected = properties.find((p) => p.name === value);
+  const filtered = properties.filter(
+    (p) =>
+      !query ||
+      p.label.toLowerCase().includes(query.toLowerCase()) ||
+      p.name.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  return (
+    <div ref={ref} className="relative" style={{ width: '200px' }}>
+      <input
+        type="text"
+        className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder={loading ? 'Loading…' : 'Select field…'}
+        value={open ? query : (selected ? selected.label : value)}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+      />
+      {open && (
+        <ul className="absolute z-50 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto text-xs">
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-slate-400">No fields found</li>
+          ) : (
+            filtered.map((p) => (
+              <li
+                key={p.name}
+                onMouseDown={() => { onChange(p.name); setOpen(false); setQuery(''); }}
+                className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${p.name === value ? 'bg-blue-100 font-medium' : ''}`}
+              >
+                <span className="text-slate-800">{p.label}</span>
+                <span className="text-slate-400 ml-1">({p.name})</span>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
 }
 
-function blankGroup(): SyncFilterGroup {
-  return { filters: [blankFilter()] };
+// ── Smart value input ─────────────────────────────────────────────────────────
+
+function ValueInput({
+  filter,
+  property,
+  onChange,
+}: {
+  filter: SyncFilter;
+  property: HsProperty | undefined;
+  onChange: (value: string) => void;
+}) {
+  const opDef = OP_MAP[filter.operator];
+  if (opDef?.noValue) return null;
+
+  const options = property?.options ?? [];
+  const isEnum = property?.type === 'enumeration' && options.length > 0;
+  const isBool = property?.type === 'bool';
+  const isNumber = property?.type === 'number';
+  const isMulti = filter.operator === 'IN' || filter.operator === 'NOT_IN';
+
+  // Multi-select with checkboxes for IN/NOT_IN on enum fields
+  if (isEnum && isMulti) {
+    const selected = new Set(
+      filter.value.split(',').map((v) => v.trim()).filter(Boolean),
+    );
+    const toggle = (val: string) => {
+      const next = new Set(selected);
+      if (next.has(val)) next.delete(val); else next.add(val);
+      onChange([...next].join(','));
+    };
+    return (
+      <div className="flex-1 border border-slate-200 rounded-lg bg-white p-2 max-h-32 overflow-y-auto">
+        {options.map((opt) => (
+          <label key={opt.value} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 px-1 py-0.5 rounded">
+            <input
+              type="checkbox"
+              checked={selected.has(opt.value)}
+              onChange={() => toggle(opt.value)}
+              className="accent-blue-600"
+            />
+            <span className="text-slate-700">{opt.label}</span>
+          </label>
+        ))}
+        {options.length === 0 && (
+          <input
+            type="text"
+            value={filter.value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="value1,value2"
+            className="w-full text-xs focus:outline-none"
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Single-select dropdown for enum EQ/NEQ
+  if (isEnum && !isMulti) {
+    return (
+      <select
+        value={filter.value}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="">Select…</option>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    );
+  }
+
+  // Bool: True / False dropdown
+  if (isBool) {
+    return (
+      <select
+        value={filter.value}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="">Select…</option>
+        <option value="true">True</option>
+        <option value="false">False</option>
+      </select>
+    );
+  }
+
+  // Number inputs (BETWEEN has two)
+  if (filter.operator === 'BETWEEN') {
+    const parts = filter.value.split(',');
+    const lo = parts[0] ?? '';
+    const hi = parts[1] ?? '';
+    return (
+      <div className="flex gap-1 flex-1">
+        <input
+          type="number"
+          placeholder="min"
+          value={lo}
+          onChange={(e) => onChange(`${e.target.value},${hi}`)}
+          className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+        />
+        <span className="text-xs text-slate-400 self-center">–</span>
+        <input
+          type="number"
+          placeholder="max"
+          value={hi}
+          onChange={(e) => onChange(`${lo},${e.target.value}`)}
+          className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+        />
+      </div>
+    );
+  }
+
+  // Default: text or number input
+  return (
+    <input
+      type={isNumber ? 'number' : 'text'}
+      placeholder={isNumber ? '0' : 'value'}
+      value={filter.value}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+    />
+  );
 }
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 function SyncCriteriaContent() {
   const params = useSearchParams();
@@ -88,6 +296,10 @@ function SyncCriteriaContent() {
   const [sourceSystem, setSourceSystem] = useState<SourceSystem>('hubspot');
   const [rules, setRules] = useState<SyncCriteriaRule[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // HubSpot properties for the field picker
+  const [hsProperties, setHsProperties] = useState<HsProperty[]>([]);
+  const [loadingProps, setLoadingProps] = useState(false);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -106,6 +318,22 @@ function SyncCriteriaContent() {
   const [testResult, setTestResult] = useState<{ passed: boolean } | null>(null);
   const [testing, setTesting] = useState(false);
 
+  const ot2api = (ot: ObjectType) =>
+    ot === 'contact' ? 'contacts' : ot === 'deal' ? 'deals' : 'notes';
+
+  const fetchProperties = useCallback(async (ot: ObjectType) => {
+    if (!installationId) return;
+    setLoadingProps(true);
+    try {
+      const res = await fetch(
+        `${API}/installations/${installationId}/field-mappings/hubspot-properties?objectType=${ot2api(ot)}`,
+      );
+      if (res.ok) setHsProperties((await res.json()) as HsProperty[]);
+    } catch { /* silent */ } finally {
+      setLoadingProps(false);
+    }
+  }, [installationId]);
+
   const fetchRules = useCallback(async () => {
     if (!installationId) return;
     setLoading(true);
@@ -123,38 +351,47 @@ function SyncCriteriaContent() {
 
   useEffect(() => { void fetchRules(); }, [fetchRules]);
 
+  // Re-fetch properties when modal object type changes
+  useEffect(() => {
+    if (showModal) void fetchProperties(modalObjectType);
+  }, [showModal, modalObjectType, fetchProperties]);
+
   // ── Filter group mutations ──────────────────────────────────────────────────
 
   function addGroup() {
-    setFilterGroups((prev) => [...prev, blankGroup()]);
+    setFilterGroups((p) => [...p, blankGroup()]);
   }
-
   function removeGroup(gi: number) {
-    setFilterGroups((prev) => prev.filter((_, i) => i !== gi));
+    setFilterGroups((p) => p.filter((_, i) => i !== gi));
   }
-
   function addFilter(gi: number) {
-    setFilterGroups((prev) =>
-      prev.map((g, i) => i === gi ? { ...g, filters: [...g.filters, blankFilter()] } : g),
+    setFilterGroups((p) =>
+      p.map((g, i) => i === gi ? { ...g, filters: [...g.filters, blankFilter()] } : g),
     );
   }
-
   function removeFilter(gi: number, fi: number) {
-    setFilterGroups((prev) =>
-      prev.map((g, i) =>
-        i === gi ? { ...g, filters: g.filters.filter((_, j) => j !== fi) } : g,
+    setFilterGroups((p) =>
+      p.map((g, i) => i === gi ? { ...g, filters: g.filters.filter((_, j) => j !== fi) } : g),
+    );
+  }
+  function updateFilter(gi: number, fi: number, patch: Partial<SyncFilter>) {
+    setFilterGroups((p) =>
+      p.map((g, i) =>
+        i === gi ? { ...g, filters: g.filters.map((f, j) => j === fi ? { ...f, ...patch } : f) } : g,
       ),
     );
   }
 
-  function updateFilter(gi: number, fi: number, patch: Partial<SyncFilter>) {
-    setFilterGroups((prev) =>
-      prev.map((g, i) =>
-        i === gi
-          ? { ...g, filters: g.filters.map((f, j) => (j === fi ? { ...f, ...patch } : f)) }
-          : g,
-      ),
-    );
+  // When field changes, reset operator to sensible default for the field type
+  function handleFieldChange(gi: number, fi: number, fieldName: string) {
+    const prop = hsProperties.find((p) => p.name === fieldName);
+    const op = prop ? defaultOpForType(prop.type) : 'EQ';
+    updateFilter(gi, fi, { field: fieldName, operator: op, value: '' });
+  }
+
+  // When operator changes, reset value
+  function handleOperatorChange(gi: number, fi: number, op: string) {
+    updateFilter(gi, fi, { operator: op, value: '' });
   }
 
   // ── Modal ───────────────────────────────────────────────────────────────────
@@ -203,7 +440,7 @@ function SyncCriteriaContent() {
       .filter((g) => g.filters.length > 0);
 
     if (validGroups.length === 0) {
-      setModalError('Add at least one filter with a field name.');
+      setModalError('Add at least one filter with a field selected.');
       return;
     }
     setSaving(true);
@@ -336,23 +573,15 @@ function SyncCriteriaContent() {
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center mb-8">
           <span className="material-symbols-outlined text-[48px] text-slate-300 block mb-3">filter_alt</span>
           <p className="text-sm font-semibold text-slate-700 mb-1">No rules configured</p>
-          <p className="text-xs text-slate-500 mb-4">
-            All records will sync. Add a rule to restrict which records are eligible.
-          </p>
-          <button
-            onClick={openAdd}
-            className="bg-[#fd7958] hover:bg-[#fb6a44] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
+          <p className="text-xs text-slate-500 mb-4">All records will sync. Add a rule to restrict which records are eligible.</p>
+          <button onClick={openAdd} className="bg-[#fd7958] hover:bg-[#fb6a44] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
             Add Rule
           </button>
         </div>
       ) : (
         <div className="space-y-3 mb-8">
           {rules.map((rule) => (
-            <div
-              key={rule.id}
-              className={`bg-white rounded-xl border p-5 transition-all ${rule.isActive ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}
-            >
+            <div key={rule.id} className={`bg-white rounded-xl border p-5 ${rule.isActive ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-slate-800">
@@ -361,24 +590,18 @@ function SyncCriteriaContent() {
                   <p className="text-xs text-slate-500 mt-0.5">
                     {rule.objectType} · {rule.sourceSystem} · {rule.conditions.length} filter group{rule.conditions.length !== 1 ? 's' : ''}
                   </p>
-                  {/* Filter groups preview */}
                   <div className="mt-3 space-y-1">
                     {rule.conditions.map((group, gi) => (
                       <div key={gi}>
                         {gi > 0 && (
-                          <p className="text-[10px] font-bold text-[#fd7958] uppercase tracking-wider text-center my-1.5">
-                            OR
-                          </p>
+                          <p className="text-[10px] font-bold text-[#fd7958] uppercase tracking-wider text-center my-1.5">OR</p>
                         )}
                         <div className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50">
-                          <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1.5">
-                            All of these match
-                          </p>
+                          <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1.5">All of these match</p>
                           <div className="space-y-0.5">
                             {group.filters.map((f, fi) => (
                               <p key={fi} className="text-xs font-mono text-slate-700">
-                                <span className="font-semibold">{f.field}</span>
-                                {' '}
+                                <span className="font-semibold">{f.field}</span>{' '}
                                 <span className="text-slate-500">{OP_MAP[f.operator]?.label ?? f.operator}</span>
                                 {!OP_MAP[f.operator]?.noValue && f.value && (
                                   <span className="text-blue-600"> {deserializeValue(f.operator, f.value)}</span>
@@ -402,12 +625,8 @@ function SyncCriteriaContent() {
                   >
                     {rule.isActive ? 'Active' : 'Inactive'}
                   </button>
-                  <button onClick={() => openEdit(rule)} className="text-xs text-blue-600 hover:underline font-medium">
-                    Edit
-                  </button>
-                  <button onClick={() => void handleDelete(rule.id)} className="text-xs text-red-500 hover:underline">
-                    Delete
-                  </button>
+                  <button onClick={() => openEdit(rule)} className="text-xs text-blue-600 hover:underline font-medium">Edit</button>
+                  <button onClick={() => void handleDelete(rule.id)} className="text-xs text-red-500 hover:underline">Delete</button>
                 </div>
               </div>
             </div>
@@ -439,16 +658,8 @@ function SyncCriteriaContent() {
             {testing ? 'Testing…' : 'Run Test'}
           </button>
           {testResult && (
-            <div
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-                testResult.passed
-                  ? 'bg-green-50 border border-green-200 text-green-800'
-                  : 'bg-red-50 border border-red-200 text-red-700'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                {testResult.passed ? 'check_circle' : 'cancel'}
-              </span>
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${testResult.passed ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+              <span className="material-symbols-outlined text-[18px]">{testResult.passed ? 'check_circle' : 'cancel'}</span>
               {testResult.passed ? 'PASS — record would sync' : 'FAIL — record would be skipped'}
             </div>
           )}
@@ -520,13 +731,18 @@ function SyncCriteriaContent() {
                   </p>
                 </div>
 
+                {loadingProps && (
+                  <div className="text-xs text-slate-400 flex items-center gap-1.5 mb-2">
+                    <span className="material-symbols-outlined text-[14px] animate-spin">autorenew</span>
+                    Loading fields…
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   {filterGroups.map((group, gi) => (
                     <div key={gi}>
                       {gi > 0 && (
-                        <p className="text-[11px] font-bold text-[#fd7958] text-center py-1.5 uppercase tracking-wider">
-                          OR
-                        </p>
+                        <p className="text-[11px] font-bold text-[#fd7958] text-center py-1.5 uppercase tracking-wider">OR</p>
                       )}
                       <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
                         <div className="flex items-center justify-between mb-3">
@@ -534,53 +750,50 @@ function SyncCriteriaContent() {
                             Group {gi + 1} — ALL must match
                           </p>
                           {filterGroups.length > 1 && (
-                            <button
-                              onClick={() => removeGroup(gi)}
-                              className="text-xs text-red-400 hover:text-red-600 flex items-center gap-0.5"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">close</span>
-                              Remove
+                            <button onClick={() => removeGroup(gi)} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-0.5">
+                              <span className="material-symbols-outlined text-[14px]">close</span>Remove
                             </button>
                           )}
                         </div>
 
                         <div className="space-y-2">
                           {group.filters.map((filter, fi) => {
-                            const opDef = OP_MAP[filter.operator];
+                            const prop = hsProperties.find((p) => p.name === filter.field);
+                            const opsForField = prop ? getOpsForType(prop.type) : ALL_OPERATORS;
                             return (
-                              <div key={fi} className="flex gap-2 items-center">
-                                <input
-                                  type="text"
-                                  placeholder="field"
+                              <div key={fi} className="flex gap-2 items-start">
+                                {/* Field picker */}
+                                <FieldPicker
                                   value={filter.field}
-                                  onChange={(e) => updateFilter(gi, fi, { field: e.target.value })}
-                                  className="w-28 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
+                                  onChange={(v) => handleFieldChange(gi, fi, v)}
+                                  properties={hsProperties}
+                                  loading={loadingProps}
                                 />
+
+                                {/* Operator */}
                                 <select
                                   value={filter.operator}
-                                  onChange={(e) =>
-                                    updateFilter(gi, fi, { operator: e.target.value, value: '' })
-                                  }
+                                  onChange={(e) => handleOperatorChange(gi, fi, e.target.value)}
                                   className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
-                                  style={{ width: '168px' }}
+                                  style={{ width: '160px' }}
                                 >
-                                  {OPERATORS.map((op) => (
+                                  {opsForField.map((op) => (
                                     <option key={op.value} value={op.value}>{op.label}</option>
                                   ))}
                                 </select>
-                                {!opDef?.noValue && (
-                                  <input
-                                    type="text"
-                                    placeholder={valuePlaceholder(filter.operator)}
-                                    value={filter.value}
-                                    onChange={(e) => updateFilter(gi, fi, { value: e.target.value })}
-                                    className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
-                                  />
-                                )}
+
+                                {/* Value */}
+                                <ValueInput
+                                  filter={filter}
+                                  property={prop}
+                                  onChange={(v) => updateFilter(gi, fi, { value: v })}
+                                />
+
+                                {/* Remove */}
                                 <button
                                   onClick={() => removeFilter(gi, fi)}
                                   disabled={group.filters.length === 1 && filterGroups.length === 1}
-                                  className="text-slate-300 hover:text-red-500 disabled:opacity-20 transition-colors flex-shrink-0"
+                                  className="text-slate-300 hover:text-red-500 disabled:opacity-20 transition-colors flex-shrink-0 mt-0.5"
                                 >
                                   <span className="material-symbols-outlined text-[18px]">close</span>
                                 </button>
@@ -589,12 +802,8 @@ function SyncCriteriaContent() {
                           })}
                         </div>
 
-                        <button
-                          onClick={() => addFilter(gi)}
-                          className="mt-2 text-xs text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">add</span>
-                          Add filter
+                        <button onClick={() => addFilter(gi)} className="mt-2 text-xs text-blue-600 hover:underline flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px]">add</span>Add filter
                         </button>
                       </div>
                     </div>
