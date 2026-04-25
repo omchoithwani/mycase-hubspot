@@ -68,7 +68,7 @@ export class MyCasePollerService {
     const pollStart = new Date();
 
     try {
-      let records: Array<{ id: string | number }>;
+      let records: Array<{ id: string | number; updated_at?: string; created_at?: string }>;
 
       if (mycaseType === 'client') {
         records = await this.mycaseClient.listClients(installationId, since);
@@ -76,7 +76,22 @@ export class MyCasePollerService {
         records = await this.mycaseClient.listMatters(installationId, since);
       }
 
-      for (const record of records) {
+      // Hard-filter by cursor date in case MyCase ignores updated_since.
+      // When syncHistoricalData=false the cursor starts at now, so any record
+      // whose updated_at is before that point is silently dropped.
+      const filtered = records.filter((r) => {
+        const recordDate = r.updated_at ?? r.created_at;
+        if (!recordDate) return true; // no date → include (can't tell)
+        return new Date(recordDate) >= since;
+      });
+
+      if (!syncHistoricalData && filtered.length < records.length) {
+        this.logger.debug(
+          `Dropped ${records.length - filtered.length} historical ${mycaseType}(s) (updated before cursor)`,
+        );
+      }
+
+      for (const record of filtered) {
         const payload: SyncJobPayload = {
           installationId,
           direction: 'mc_to_hs',
@@ -92,9 +107,9 @@ export class MyCasePollerService {
         });
       }
 
-      if (records.length > 0) {
+      if (filtered.length > 0) {
         this.logger.log(
-          `Enqueued ${records.length} MyCase ${mycaseType}(s) for installation ${installationId}`,
+          `Enqueued ${filtered.length} MyCase ${mycaseType}(s) for installation ${installationId}`,
         );
       }
 
