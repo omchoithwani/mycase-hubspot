@@ -39,7 +39,7 @@ export class InitialSyncService {
       } as SyncJobPayload,
       {
         ...SYNC_JOB_OPTIONS,
-        jobId: `force:${objectType}:${recordId}:${Date.now()}`,
+        jobId: `force.${objectType}.${recordId}.${Date.now()}`,
       },
     );
     this.logger.log(`Force-sync enqueued: ${direction} ${objectType}/${recordId}`);
