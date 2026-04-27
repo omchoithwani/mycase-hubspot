@@ -396,10 +396,14 @@ function SyncCriteriaContent() {
   const [saving, setSaving] = useState(false);
 
   // Test panel
-  const [testJson, setTestJson] = useState(
-    '{\n  "email": "test@example.com",\n  "amount": "2000",\n  "lifecyclestage": "lead"\n}',
-  );
-  const [testResult, setTestResult] = useState<{ passed: boolean } | null>(null);
+  const [testMode, setTestMode] = useState<'email' | 'id'>('email');
+  const [testInput, setTestInput] = useState('');
+  const [testResult, setTestResult] = useState<{
+    passed: boolean;
+    recordId: string;
+    properties: Record<string, unknown>;
+  } | null>(null);
+  const [testError, setTestError] = useState('');
   const [testing, setTesting] = useState(false);
 
   const ot2api = (ot: ObjectType) =>
@@ -577,17 +581,32 @@ function SyncCriteriaContent() {
   }
 
   async function handleTest() {
+    if (!testInput.trim()) return;
     setTesting(true);
     setTestResult(null);
+    setTestError('');
     try {
-      const record = JSON.parse(testJson) as Record<string, unknown>;
-      const res = await fetch(`${API}/installations/${installationId}/sync-criteria/test-all`, {
+      const body: Record<string, unknown> = { objectType, sourceSystem };
+      if (testMode === 'email') {
+        body.email = testInput.trim();
+      } else {
+        body.recordId = testInput.trim();
+      }
+      const res = await fetch(`${API}/installations/${installationId}/sync-criteria/test-live`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ objectType, sourceSystem, record }),
+        body: JSON.stringify(body),
       });
-      if (res.ok) setTestResult((await res.json()) as { passed: boolean });
-    } catch { /* silent */ } finally {
+      if (!res.ok) {
+        let msg = `Error ${res.status}`;
+        try { msg = (await res.json() as { message?: string }).message ?? msg; } catch { /* */ }
+        setTestError(msg);
+        return;
+      }
+      setTestResult((await res.json()) as { passed: boolean; recordId: string; properties: Record<string, unknown> });
+    } catch (e: unknown) {
+      setTestError(e instanceof Error ? e.message : 'Request failed');
+    } finally {
       setTesting(false);
     }
   }
@@ -727,34 +746,98 @@ function SyncCriteriaContent() {
 
       {/* Test Panel */}
       <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <h2 className="text-sm font-semibold text-slate-800 mb-1">Test Panel</h2>
+        <h2 className="text-sm font-semibold text-slate-800 mb-1">Live Record Test</h2>
         <p className="text-xs text-slate-500 mb-4">
-          Paste a JSON record to test whether it passes all active rules for the selected object type and source system.
+          Fetch a real HubSpot record and test it against all active sync criteria rules.
         </p>
-        <textarea
-          value={testJson}
-          onChange={(e) => setTestJson(e.target.value)}
-          rows={6}
-          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <div className="flex items-center gap-3 flex-wrap">
-          <button
-            onClick={() => void handleTest()}
-            disabled={testing}
-            className="flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            <span className={`material-symbols-outlined text-[18px] ${testing ? 'animate-spin' : ''}`}>
-              {testing ? 'autorenew' : 'play_arrow'}
-            </span>
-            {testing ? 'Testing…' : 'Run Test'}
-          </button>
-          {testResult && (
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${testResult.passed ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-700'}`}>
-              <span className="material-symbols-outlined text-[18px]">{testResult.passed ? 'check_circle' : 'cancel'}</span>
-              {testResult.passed ? 'PASS — record would sync' : 'FAIL — record would be skipped'}
+
+        {objectType === 'note' ? (
+          <p className="text-xs text-slate-400 italic">Live testing is only available for contacts and deals.</p>
+        ) : (
+          <>
+            {/* Mode toggle — email only available for contacts */}
+            <div className="flex gap-0 mb-3 border border-slate-200 rounded-lg overflow-hidden w-fit">
+              {objectType === 'contact' && (
+                <button
+                  onClick={() => { setTestMode('email'); setTestInput(''); setTestResult(null); setTestError(''); }}
+                  className={`text-xs font-medium px-3 py-1.5 transition-colors ${testMode === 'email' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  By Email
+                </button>
+              )}
+              <button
+                onClick={() => { setTestMode('id'); setTestInput(''); setTestResult(null); setTestError(''); }}
+                className={`text-xs font-medium px-3 py-1.5 transition-colors ${testMode === 'id' || objectType === 'deal' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              >
+                By Record ID
+              </button>
             </div>
-          )}
-        </div>
+
+            {/* Input + button */}
+            <div className="flex gap-2 mb-3">
+              <input
+                type={testMode === 'email' && objectType === 'contact' ? 'email' : 'text'}
+                placeholder={testMode === 'email' ? 'contact@example.com' : 'HubSpot record ID'}
+                value={testInput}
+                onChange={(e) => setTestInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void handleTest()}
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={() => void handleTest()}
+                disabled={testing || !testInput.trim()}
+                className="flex items-center gap-2 bg-[#fd7958] hover:bg-[#fb6a44] disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+              >
+                <span className={`material-symbols-outlined text-[18px] ${testing ? 'animate-spin' : ''}`}>
+                  {testing ? 'autorenew' : 'travel_explore'}
+                </span>
+                {testing ? 'Fetching…' : 'Find & Test'}
+              </button>
+            </div>
+
+            {/* Error */}
+            {testError && (
+              <div className="mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex items-start gap-2">
+                <span className="material-symbols-outlined text-[14px] flex-shrink-0 mt-0.5">error_outline</span>
+                <span>{testError}</span>
+              </div>
+            )}
+
+            {/* Result */}
+            {testResult && (
+              <div className="space-y-3">
+                <div className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold ${testResult.passed ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                  <span className="material-symbols-outlined text-[20px]">{testResult.passed ? 'check_circle' : 'cancel'}</span>
+                  <span>{testResult.passed ? 'PASS — this record would sync' : 'FAIL — this record would be skipped'}</span>
+                  <span className="ml-auto text-xs font-normal opacity-70">ID: {testResult.recordId}</span>
+                </div>
+
+                {/* Properties preview */}
+                <details className="border border-slate-200 rounded-xl overflow-hidden">
+                  <summary className="px-4 py-2.5 text-xs font-medium text-slate-600 cursor-pointer hover:bg-slate-50 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[14px]">expand_more</span>
+                    Record properties ({Object.keys(testResult.properties).filter((k) => testResult.properties[k] != null && testResult.properties[k] !== '').length} non-empty)
+                  </summary>
+                  <div className="max-h-64 overflow-y-auto border-t border-slate-100">
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {Object.entries(testResult.properties)
+                          .filter(([, v]) => v != null && v !== '')
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([k, v]) => (
+                            <tr key={k} className="border-b border-slate-50 hover:bg-slate-50">
+                              <td className="px-4 py-1.5 font-mono text-slate-500 w-1/2">{k}</td>
+                              <td className="px-4 py-1.5 text-slate-800 w-1/2 truncate max-w-0">{String(v)}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Modal */}
