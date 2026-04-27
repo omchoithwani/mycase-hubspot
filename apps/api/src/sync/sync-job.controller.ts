@@ -1,9 +1,13 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body } from '@nestjs/common';
 import { SyncJobService } from './sync-job.service';
+import { InitialSyncService } from './initial-sync.service';
 
 @Controller('installations/:installationId/sync-jobs')
 export class SyncJobController {
-  constructor(private readonly service: SyncJobService) {}
+  constructor(
+    private readonly service: SyncJobService,
+    private readonly initialSync: InitialSyncService,
+  ) {}
 
   @Get()
   async list(
@@ -25,5 +29,29 @@ export class SyncJobController {
   @Get('stats')
   stats(@Param('installationId') installationId: string) {
     return this.service.stats(installationId);
+  }
+
+  @Post('trigger')
+  trigger(@Param('installationId') installationId: string) {
+    return this.initialSync.triggerForInstallation(installationId);
+  }
+
+  @Post('force-record')
+  async forceRecord(
+    @Param('installationId') installationId: string,
+    @Body()
+    body: {
+      objectType: 'contact' | 'deal';
+      recordId: string;
+      direction: 'hs_to_mc' | 'mc_to_hs';
+    },
+  ) {
+    await this.initialSync.triggerSingleRecord(
+      installationId,
+      body.objectType,
+      body.recordId,
+      body.direction,
+    );
+    return { queued: true };
   }
 }

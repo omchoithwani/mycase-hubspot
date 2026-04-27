@@ -19,6 +19,32 @@ export class InitialSyncService {
     @InjectQueue(QUEUE_MC_TO_HS) private readonly mcToHsQueue: Queue,
   ) {}
 
+  async triggerSingleRecord(
+    installationId: string,
+    objectType: 'contact' | 'deal',
+    recordId: string,
+    direction: 'hs_to_mc' | 'mc_to_hs',
+  ): Promise<void> {
+    const queue = direction === 'hs_to_mc' ? this.hsToMcQueue : this.mcToHsQueue;
+    const sourceSystem = direction === 'hs_to_mc' ? 'hubspot' : 'mycase';
+    await queue.add(
+      'sync',
+      {
+        installationId,
+        objectType,
+        direction,
+        sourceId: recordId,
+        sourceSystem,
+        triggeredBy: 'manual',
+      } as SyncJobPayload,
+      {
+        ...SYNC_JOB_OPTIONS,
+        jobId: `force:${objectType}:${recordId}:${Date.now()}`,
+      },
+    );
+    this.logger.log(`Force-sync enqueued: ${direction} ${objectType}/${recordId}`);
+  }
+
   async triggerForInstallation(installationId: string): Promise<{ enqueued: number }> {
     const installation = await this.installationService.findByIdOrFail(installationId);
     const portalId = installation.hubspotPortalId;

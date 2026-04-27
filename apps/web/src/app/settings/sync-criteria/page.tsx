@@ -405,6 +405,8 @@ function SyncCriteriaContent() {
   } | null>(null);
   const [testError, setTestError] = useState('');
   const [testing, setTesting] = useState(false);
+  const [syncingNow, setSyncingNow] = useState(false);
+  const [syncNowDone, setSyncNowDone] = useState(false);
 
   const ot2api = (ot: ObjectType) =>
     ot === 'contact' ? 'contacts' : ot === 'deal' ? 'deals' : 'notes';
@@ -585,6 +587,7 @@ function SyncCriteriaContent() {
     setTesting(true);
     setTestResult(null);
     setTestError('');
+    setSyncNowDone(false);
     try {
       const body: Record<string, unknown> = { objectType, sourceSystem };
       if (testMode === 'email') {
@@ -608,6 +611,23 @@ function SyncCriteriaContent() {
       setTestError(e instanceof Error ? e.message : 'Request failed');
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleSyncNow() {
+    if (!testResult || objectType === 'note') return;
+    setSyncingNow(true);
+    setSyncNowDone(false);
+    try {
+      const direction = sourceSystem === 'hubspot' ? 'hs_to_mc' : 'mc_to_hs';
+      await fetch(`${API}/installations/${installationId}/sync-jobs/force-record`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ objectType, recordId: testResult.recordId, direction }),
+      });
+      setSyncNowDone(true);
+    } finally {
+      setSyncingNow(false);
     }
   }
 
@@ -811,6 +831,24 @@ function SyncCriteriaContent() {
                   <span>{testResult.passed ? 'PASS — this record would sync' : 'FAIL — this record would be skipped'}</span>
                   <span className="ml-auto text-xs font-normal opacity-70">ID: {testResult.recordId}</span>
                 </div>
+
+                {testResult.passed && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => void handleSyncNow()}
+                      disabled={syncingNow || syncNowDone}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <span className={`material-symbols-outlined text-[16px] ${syncingNow ? 'animate-spin' : ''}`}>
+                        {syncingNow ? 'autorenew' : 'sync'}
+                      </span>
+                      {syncingNow ? 'Queuing…' : syncNowDone ? 'Queued!' : 'Sync Now'}
+                    </button>
+                    {syncNowDone && (
+                      <span className="text-xs text-slate-500">Job enqueued — check Sync History to track progress.</span>
+                    )}
+                  </div>
+                )}
 
                 {/* Properties preview */}
                 <details className="border border-slate-200 rounded-xl overflow-hidden">
