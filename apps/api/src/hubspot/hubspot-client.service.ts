@@ -74,11 +74,15 @@ export class HubSpotClientService {
     portalId: string,
     installationId: string,
     contactId: string,
+    properties?: string[],
   ): Promise<HsContact> {
+    const props = properties?.length
+      ? properties.join(',')
+      : 'email,firstname,lastname,phone,company,lifecyclestage,mycase_client_id';
     return this.call(portalId, installationId, (http) =>
       http
         .get(`/crm/v3/objects/contacts/${contactId}`, {
-          params: { properties: 'email,firstname,lastname,phone,company,lifecyclestage,mycase_client_id' },
+          params: { properties: props },
         })
         .then((r) => r.data),
     );
@@ -148,13 +152,15 @@ export class HubSpotClientService {
     portalId: string,
     installationId: string,
     dealId: string,
+    properties?: string[],
   ): Promise<HsDeal> {
+    const props = properties?.length
+      ? properties.join(',')
+      : 'dealname,amount,closedate,dealstage,pipeline,mycase_matter_id';
     return this.call(portalId, installationId, (http) =>
       http
         .get(`/crm/v3/objects/deals/${dealId}`, {
-          params: {
-            properties: 'dealname,amount,closedate,dealstage,pipeline,mycase_matter_id',
-          },
+          params: { properties: props },
         })
         .then((r) => r.data),
     );

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { BaseProcessor } from './base.processor';
 import { SyncJobPayload, SyncResult } from '@mycase-hubspot/shared-types';
 import { HubSpotClientService } from '../../hubspot/hubspot-client.service';
+import { HubSpotPropertiesService } from '../../hubspot/hubspot-properties.service';
 import { MyCaseClientService } from '../../mycase/mycase-client.service';
 import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
@@ -28,6 +29,7 @@ export class DealToMatterProcessor extends BaseProcessor {
   constructor(
     private readonly installationService: InstallationService,
     private readonly hubspot: HubSpotClientService,
+    private readonly hsProperties: HubSpotPropertiesService,
     private readonly mycase: MyCaseClientService,
     private readonly syncRecords: SyncRecordService,
     private readonly fieldMapping: FieldMappingService,
@@ -42,11 +44,16 @@ export class DealToMatterProcessor extends BaseProcessor {
     const { installationId, sourceId } = payload;
     const installation = await this.installationService.findByIdOrFail(installationId);
 
-    // 1. Fetch deal from HubSpot
+    // 1. Fetch deal from HubSpot with all properties so criteria evaluation
+    //    sees the same fields as the test panel
+    const allProps = await this.hsProperties.fetchProperties(
+      installation.hubspotPortalId, installationId, 'deals',
+    );
     const deal = await this.hubspot.getDeal(
       installation.hubspotPortalId,
       installationId,
       sourceId,
+      allProps.map((p) => p.name),
     );
 
     const props = deal.properties;
