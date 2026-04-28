@@ -234,7 +234,7 @@ export class MyCaseClientService {
     const matchesPhone = (c: McClient) => {
       if (!targetPhone || targetPhone.length < 7) return false;
       const n = (s?: string) => s?.replace(/\D/g, '').slice(-10) ?? '';
-      return n(c.cell_phone_number) === targetPhone || n(c.phone_number) === targetPhone;
+      return n(c.cell_phone_number) === targetPhone;
     };
 
     // Scan one batch (up to maxPages pages) using any filter params, match email client-side
