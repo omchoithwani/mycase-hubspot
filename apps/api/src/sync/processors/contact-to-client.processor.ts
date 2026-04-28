@@ -143,10 +143,10 @@ export class ContactToClientProcessor extends BaseProcessor {
 
         this.logger.warn(`createClient 422 email conflict for contact ${sourceId} — resolving`);
 
-        // Fast path: HubSpot contact may already have mycase_client_id set (manual or prior sync)
-        const knownMycaseId = contact.properties.mycase_client_id as string | undefined;
+        // Fast path: HubSpot contact may already have my_case_id set (manual or prior sync)
+        const knownMycaseId = contact.properties.my_case_id as string | undefined;
         if (knownMycaseId) {
-          this.logger.log(`Resolved via HS mycase_client_id=${knownMycaseId} for contact ${sourceId}`);
+          this.logger.log(`Resolved via HS my_case_id=${knownMycaseId} for contact ${sourceId}`);
           mycaseId = knownMycaseId;
           await this.mycase.updateClient(installationId, mycaseId, clientData);
           action = 'updated';
@@ -184,16 +184,16 @@ export class ContactToClientProcessor extends BaseProcessor {
       direction: 'hs_to_mc',
     });
 
-    // 8. Write back mycase_client_id (best effort)
+    // 8. Write back my_case_id (best effort)
     try {
       await this.hubspot.updateContact(
         installation.hubspotPortalId,
         installationId,
         sourceId,
-        { mycase_client_id: mycaseId },
+        { my_case_id: mycaseId },
       );
     } catch {
-      this.logger.warn(`Could not write mycase_client_id back to contact ${sourceId}`);
+      this.logger.warn(`Could not write my_case_id back to contact ${sourceId}`);
     }
 
     return { success: true, action, destinationId: mycaseId };

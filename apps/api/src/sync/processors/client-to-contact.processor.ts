@@ -59,7 +59,7 @@ export class ClientToContactProcessor extends BaseProcessor {
       lastname: (mapped['lastname'] as string) ?? client.last_name,
       email: (mapped['email'] as string) ?? client.email,
       phone: (mapped['phone'] as string) ?? client.cell_phone_number ?? client.home_phone_number,
-      mycase_client_id: sourceId,
+      my_case_id: sourceId,
     };
 
     // 5. Change detection

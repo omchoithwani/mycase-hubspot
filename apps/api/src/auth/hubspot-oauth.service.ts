@@ -141,7 +141,7 @@ export class HubSpotOAuthService {
       {
         objectType: 'contacts',
         property: {
-          name: 'mycase_client_id',
+          name: 'my_case_id',
           label: 'MyCase Client ID',
           type: 'string',
           fieldType: 'text',

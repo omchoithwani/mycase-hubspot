@@ -7,7 +7,7 @@ export interface HsContact {
     phone?: string;
     company?: string;
     lifecyclestage?: string;
-    mycase_client_id?: string;
+    my_case_id?: string;
     [key: string]: string | undefined;
   };
   createdAt?: string;
@@ -20,6 +20,6 @@ export interface HsContactInput {
   lastname?: string;
   phone?: string;
   company?: string;
-  mycase_client_id?: string;
+  my_case_id?: string;
   [key: string]: string | undefined;
 }

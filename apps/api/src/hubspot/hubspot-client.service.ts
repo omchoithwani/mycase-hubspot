@@ -78,7 +78,7 @@ export class HubSpotClientService {
   ): Promise<HsContact> {
     const props = properties?.length
       ? properties.join(',')
-      : 'email,firstname,lastname,phone,company,lifecyclestage,mycase_client_id';
+      : 'email,firstname,lastname,phone,company,lifecyclestage,my_case_id';
     return this.call(portalId, installationId, (http) =>
       http
         .get(`/crm/v3/objects/contacts/${contactId}`, {
@@ -117,7 +117,7 @@ export class HubSpotClientService {
     portalId: string,
     installationId: string,
     filterGroups: object[],
-    properties: string[] = ['email', 'firstname', 'lastname', 'phone', 'mycase_client_id'],
+    properties: string[] = ['email', 'firstname', 'lastname', 'phone', 'my_case_id'],
   ): Promise<HsContact[]> {
     return this.call(portalId, installationId, (http) =>
       http
@@ -140,7 +140,7 @@ export class HubSpotClientService {
       http
         .post('/crm/v3/objects/contacts/batch/read', {
           inputs: ids.map((id) => ({ id })),
-          properties: ['email', 'firstname', 'lastname', 'phone', 'mycase_client_id'],
+          properties: ['email', 'firstname', 'lastname', 'phone', 'my_case_id'],
         })
         .then((r) => r.data.results ?? []),
     );
@@ -369,7 +369,7 @@ export class HubSpotClientService {
               }],
             }],
             sorts: [{ propertyName: 'lastmodifieddate', direction: 'ASCENDING' }],
-            properties: ['email', 'firstname', 'lastname', 'phone', 'company', 'mycase_client_id'],
+            properties: ['email', 'firstname', 'lastname', 'phone', 'company', 'my_case_id'],
             limit: 100,
             ...(after ? { after } : {}),
           })
@@ -428,7 +428,7 @@ export class HubSpotClientService {
           params: {
             limit: 100,
             after,
-            properties: 'email,firstname,lastname,phone,company,lifecyclestage,mycase_client_id',
+            properties: 'email,firstname,lastname,phone,company,lifecyclestage,my_case_id',
           },
         })
         .then((r) => ({
