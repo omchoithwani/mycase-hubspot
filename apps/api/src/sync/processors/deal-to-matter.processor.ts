@@ -197,6 +197,8 @@ export class DealToMatterProcessor extends BaseProcessor {
       dealId,
     );
 
+    this.logger.log(`resolveLinkedClient: deal ${dealId} has ${contactIds.length} associated contact(s): [${contactIds.join(', ')}]`);
+
     for (const contactId of contactIds) {
       // 1. Check sync_records first (fast path)
       const record = await this.syncRecords.findByHubSpotId(
@@ -204,16 +206,22 @@ export class DealToMatterProcessor extends BaseProcessor {
         'contact',
         contactId,
       );
-      if (record) return record.mycaseObjectId;
+      if (record) {
+        this.logger.log(`resolveLinkedClient: found sync_record for contact ${contactId} → MyCase client ${record.mycaseObjectId}`);
+        return record.mycaseObjectId;
+      }
 
       // 2. No sync_record — contact may predate sync setup.
       //    Fetch the contact's email and search MyCase directly.
+      this.logger.log(`resolveLinkedClient: no sync_record for contact ${contactId}, trying email fallback`);
       try {
         const contact = await this.hubspot.getContact(portalId, installationId, contactId);
         const email = contact.properties?.email as string | undefined;
+        this.logger.log(`resolveLinkedClient: contact ${contactId} email = ${email ?? '(none)'}`);
         if (!email) continue;
 
         const mcClient = await this.mycase.searchClientByEmail(installationId, email);
+        this.logger.log(`resolveLinkedClient: MyCase search for "${email}" → ${mcClient ? `found client ${mcClient.id}` : 'not found'}`);
         if (!mcClient) continue;
 
         // Auto-link: create sync_record so future syncs use the fast path
@@ -227,13 +235,15 @@ export class DealToMatterProcessor extends BaseProcessor {
           direction: 'hs_to_mc',
         });
         this.logger.log(
-          `Auto-linked HubSpot contact ${contactId} to existing MyCase client ${mycaseClientId} via email match`,
+          `resolveLinkedClient: auto-linked contact ${contactId} → MyCase client ${mycaseClientId} via email`,
         );
         return mycaseClientId;
       } catch (err: any) {
-        this.logger.warn(`Could not resolve contact ${contactId} via email fallback: ${err.message}`);
+        this.logger.warn(`resolveLinkedClient: email fallback failed for contact ${contactId}: ${err.message}`);
       }
     }
+
+    this.logger.warn(`resolveLinkedClient: could not resolve a MyCase client for deal ${dealId}`);
     return null;
   }
 }
