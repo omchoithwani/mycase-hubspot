@@ -188,6 +188,7 @@ export class MyCaseClientService {
   ): Promise<McClient | null> {
     const target = email.toLowerCase();
     const http = await this.buildClient(installationId);
+    let totalScanned = 0;
 
     for (const archived of [false, true]) {
       let page = 1;
@@ -198,22 +199,8 @@ export class MyCaseClientService {
         const raw = res.data;
         const batch: McClient[] = raw?.clients ?? (Array.isArray(raw) ? raw : []);
 
-        // Log response shape on first page so we can diagnose API envelope issues
-        if (page === 1) {
-          const sample = batch[0];
-          this.logger.warn(
-            `searchClientByEmail archived=${archived} p1: ` +
-            `envelope_keys=[${Object.keys(raw ?? {}).join(',')}], ` +
-            `count=${batch.length}, ` +
-            `sample_email=${sample?.email ?? '(none)'}, sample_id=${(sample as any)?.id ?? '(none)'}`,
-          );
-        } else {
-          this.logger.warn(
-            `searchClientByEmail archived=${archived} p${page}: count=${batch.length}`,
-          );
-        }
-
         if (batch.length === 0) break;
+        totalScanned += batch.length;
 
         const found = batch.find((c) => c.email?.toLowerCase() === target);
         if (found) return found;
@@ -223,7 +210,9 @@ export class MyCaseClientService {
       }
     }
 
-    this.logger.warn(`searchClientByEmail: "${email}" not found (maxPages=${maxPages})`);
+    this.logger.warn(
+      `searchClientByEmail: "${email}" not found after scanning ${totalScanned} clients (maxPages=${maxPages})`,
+    );
     return null;
   }
 
