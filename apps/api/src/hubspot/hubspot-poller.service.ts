@@ -39,6 +39,7 @@ export class HubSpotPollerService {
         await Promise.all([
           this.pollObjectType(installation.id, installation.hubspotPortalId, 'contact'),
           this.pollObjectType(installation.id, installation.hubspotPortalId, 'deal'),
+          this.pollObjectType(installation.id, installation.hubspotPortalId, 'note'),
         ]);
       }
     } catch (err: any) {
@@ -51,7 +52,7 @@ export class HubSpotPollerService {
   private async pollObjectType(
     installationId: string,
     portalId: string,
-    objectType: 'contact' | 'deal',
+    objectType: 'contact' | 'deal' | 'note',
   ): Promise<void> {
     const cursorKey = `hs_${objectType}`;
     const cursor = await this.getOrCreateCursor(installationId, cursorKey);
@@ -63,8 +64,10 @@ export class HubSpotPollerService {
 
       if (objectType === 'contact') {
         records = await this.hubspotClient.listContactsModifiedSince(portalId, installationId, since);
-      } else {
+      } else if (objectType === 'deal') {
         records = await this.hubspotClient.listDealsModifiedSince(portalId, installationId, since);
+      } else {
+        records = await this.hubspotClient.listNotesModifiedSince(portalId, installationId, since);
       }
 
       for (const record of records) {

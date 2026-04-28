@@ -151,14 +151,27 @@ export class ContactToClientProcessor extends BaseProcessor {
           await this.mycase.updateClient(installationId, mycaseId, clientData);
           action = 'updated';
         } else {
-          // Slow path: search MyCase by email (may be unreliable for large firms)
-          const conflictClient = await this.mycase.searchClientByEmail(installationId, clientData.email);
+          // Slow path 1: scan by email (paginates all clients, may miss on very large firms)
+          let conflictClient = await this.mycase.searchClientByEmail(installationId, clientData.email);
+
+          // Slow path 2: scan by first+last name and match email client-side
+          if (!conflictClient && clientData.first_name && clientData.last_name) {
+            conflictClient = await this.mycase.searchClientByNameAndEmail(
+              installationId,
+              clientData.first_name,
+              clientData.last_name,
+              clientData.email,
+            );
+            if (conflictClient) {
+              this.logger.log(`Resolved email conflict via name search: contact ${sourceId} → MyCase client ${conflictClient.id}`);
+            }
+          }
+
           if (!conflictClient) {
             return this.failed(
               'EMAIL_CONFLICT_UNRESOLVABLE',
               `MyCase reports email "${clientData.email}" is already taken but the client cannot be found via the API. ` +
-              `To fix: open the HubSpot contact, set the "MyCase Client ID" field to the correct MyCase client ID, then re-sync. ` +
-              `Alternatively, change the email on the conflicting MyCase account.`,
+              `To fix: open the HubSpot contact, set the "MyCase Client ID" (my_case_id) property to the correct MyCase client ID, then re-sync.`,
             );
           }
           mycaseId = String(conflictClient.id);

@@ -216,6 +216,39 @@ export class MyCaseClientService {
     return null;
   }
 
+  /**
+   * Search by first+last name using MyCase filter params (small result set if filtering works).
+   * Checks up to 3 pages and matches email client-side as a fallback when email-only scan fails.
+   */
+  async searchClientByNameAndEmail(
+    installationId: string,
+    firstName: string,
+    lastName: string,
+    email: string,
+  ): Promise<McClient | null> {
+    const http = await this.buildClient(installationId);
+    const target = email.toLowerCase();
+
+    for (const archived of [false, true]) {
+      for (let page = 1; page <= 3; page++) {
+        const res = await http.get('/clients', {
+          params: { first_name: firstName, last_name: lastName, page, page_size: 200, archived },
+        });
+        const raw = res.data;
+        const batch: McClient[] = raw?.clients ?? (Array.isArray(raw) ? raw : []);
+
+        if (batch.length === 0) break;
+
+        const found = batch.find((c) => c.email?.toLowerCase() === target);
+        if (found) return found;
+
+        if (batch.length < 200) break;
+      }
+    }
+
+    return null;
+  }
+
   // ── Cases (Matters) ───────────────────────────────────────────────────────────
 
   async getMatter(installationId: string, matterId: string): Promise<McMatter> {

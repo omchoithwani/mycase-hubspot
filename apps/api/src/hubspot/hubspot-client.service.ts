@@ -415,6 +415,39 @@ export class HubSpotClientService {
     return results;
   }
 
+  async listNotesModifiedSince(
+    portalId: string,
+    installationId: string,
+    since: Date,
+  ): Promise<HsNote[]> {
+    const results: HsNote[] = [];
+    let after: string | undefined;
+
+    do {
+      const page = await this.call(portalId, installationId, (http) =>
+        http
+          .post('/crm/v3/objects/notes/search', {
+            filterGroups: [{
+              filters: [{
+                propertyName: 'hs_lastmodifieddate',
+                operator: 'GT',
+                value: String(since.getTime()),
+              }],
+            }],
+            sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'ASCENDING' }],
+            properties: ['hs_note_body', 'hs_timestamp', 'hubspot_owner_id'],
+            limit: 100,
+            ...(after ? { after } : {}),
+          })
+          .then((r) => r.data),
+      );
+      results.push(...(page.results ?? []));
+      after = page.paging?.next?.after as string | undefined;
+    } while (after);
+
+    return results;
+  }
+
   // ── Paginated list (for initial sync) ────────────────────────────────────────
 
   async listContactsPage(
