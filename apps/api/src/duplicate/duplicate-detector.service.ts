@@ -82,7 +82,9 @@ export class DuplicateDetectorService {
     if (direction === 'hs_to_mc') {
       // Creating MyCase client — check MyCase first
       if (opts.email) {
-        const found = await this.mycase.searchClientByEmail(installationId, opts.email);
+        // Quick 1-page check — sufficient when MyCase filters by email server-side.
+        // If not found here, the 422 catch in the processor does a full scan.
+        const found = await this.mycase.searchClientByEmail(installationId, opts.email, 1);
         if (found) {
           return { existingId: String(found.id), ambiguous: false, confidence: 'exact', score: 1.0 };
         }

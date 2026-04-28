@@ -184,17 +184,14 @@ export class MyCaseClientService {
   async searchClientByEmail(
     installationId: string,
     email: string,
+    maxPages = 40,
   ): Promise<McClient | null> {
     const target = email.toLowerCase();
     const http = await this.buildClient(installationId);
 
-    // Search both active and archived clients — archived clients are excluded
-    // from the default list but their email is still reserved (causes 422 on create).
     for (const archived of [false, true]) {
-      const MAX_PAGES = 40;
       let page = 1;
-
-      while (page <= MAX_PAGES) {
+      while (page <= maxPages) {
         const res = await http.get('/clients', {
           params: { email, page, page_size: 500, archived },
         });
@@ -210,7 +207,7 @@ export class MyCaseClientService {
       }
     }
 
-    this.logger.warn(`searchClientByEmail: "${email}" not found in active or archived clients`);
+    this.logger.warn(`searchClientByEmail: "${email}" not found (maxPages=${maxPages})`);
     return null;
   }
 

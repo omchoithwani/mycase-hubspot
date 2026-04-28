@@ -134,7 +134,6 @@ export class ContactToClientProcessor extends BaseProcessor {
         action = 'created';
         this.logger.log(`Created MyCase client ${mycaseId} from HubSpot contact ${sourceId}`);
       } catch (err: any) {
-        // MyCase rejects creation when the email already exists — find and update instead
         const body = err?.response?.data ?? {};
         const isEmailConflict =
           err?.response?.status === 422 &&
@@ -142,15 +141,18 @@ export class ContactToClientProcessor extends BaseProcessor {
 
         if (!isEmailConflict || !clientData.email) throw err;
 
-        this.logger.warn(
-          `createClient 422 email conflict for contact ${sourceId} — searching MyCase by email`,
-        );
+        // Email is taken in MyCase — try to find the existing client and update instead
         const existing = await this.mycase.searchClientByEmail(installationId, clientData.email);
         if (!existing) {
+          // Client not findable via API (may be a staff/user account or outside API visibility).
+          // Return a non-retrying failure — user must manually link in MyCase.
           return this.failed(
-            'VALIDATION',
-            `MyCase rejected client creation: ${JSON.stringify(body)}`,
+            'EMAIL_CONFLICT_UNRESOLVABLE',
+            `MyCase reports email "${clientData.email}" is already taken but the client cannot be found via the API. ` +
+            `This usually means the email belongs to a MyCase staff/user account. ` +
+            `To fix: in MyCase, change the email on the conflicting account, then re-sync.`,
           );
+        }
         }
 
         mycaseId = String(existing.id);
