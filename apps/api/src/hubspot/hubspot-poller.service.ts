@@ -36,11 +36,11 @@ export class HubSpotPollerService {
       this.logger.debug(`Polling HubSpot for ${installations.length} installation(s)`);
 
       for (const installation of installations) {
-        await Promise.all([
-          this.pollObjectType(installation.id, installation.hubspotPortalId, 'contact'),
-          this.pollObjectType(installation.id, installation.hubspotPortalId, 'deal'),
-          this.pollObjectType(installation.id, installation.hubspotPortalId, 'note'),
-        ]);
+        // Sequential — search API has a tighter per-second limit than the overall bucket;
+        // firing all three in parallel causes 429 bursts.
+        await this.pollObjectType(installation.id, installation.hubspotPortalId, 'contact');
+        await this.pollObjectType(installation.id, installation.hubspotPortalId, 'deal');
+        await this.pollObjectType(installation.id, installation.hubspotPortalId, 'note');
       }
     } catch (err: any) {
       this.logger.error(`HubSpot poll error: ${err.message}`, err.stack);

@@ -48,16 +48,29 @@ export class HubSpotClientService {
     } catch (err) {
       const axiosErr = err as AxiosError;
       if (axiosErr.response?.status === 429) {
-        const retryAfter =
-          Number(axiosErr.response.headers['retry-after'] ?? 10) * 1000;
-        this.logger.warn(
-          `HubSpot 429 for portal ${portalId} — retrying after ${retryAfter}ms`,
-        );
-        await new Promise((r) => setTimeout(r, retryAfter));
-        // Re-acquire token and retry once
-        await this.rateLimiter.acquire(portalId);
-        const http2 = await this.client(installationId);
-        return fn(http2);
+        // Retry up to 3 times with increasing backoff
+        let lastErr: AxiosError = axiosErr;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const retryAfter =
+            Number((lastErr.response as any)?.headers?.['retry-after'] ?? 10) * 1000 * attempt;
+          this.logger.warn(
+            `HubSpot 429 for portal ${portalId} — attempt ${attempt}/3, retrying after ${retryAfter}ms`,
+          );
+          await new Promise((r) => setTimeout(r, retryAfter));
+          try {
+            await this.rateLimiter.acquire(portalId);
+            const http2 = await this.client(installationId);
+            return await fn(http2);
+          } catch (retryErr) {
+            const retryAxiosErr = retryErr as AxiosError;
+            if (retryAxiosErr.response?.status === 429) {
+              lastErr = retryAxiosErr;
+              continue;
+            }
+            throw retryErr;
+          }
+        }
+        throw lastErr;
       }
       if (axiosErr.response?.status === 404) {
         throw new NotFoundException(
