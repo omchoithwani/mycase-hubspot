@@ -198,10 +198,20 @@ export class MyCaseClientService {
         const raw = res.data;
         const batch: McClient[] = raw?.clients ?? (Array.isArray(raw) ? raw : []);
 
-        this.logger.debug(
-          `searchClientByEmail page=${page} archived=${archived}: ` +
-          `keys=${Object.keys(raw ?? {}).join(',')}, count=${batch.length}`,
-        );
+        // Log response shape on first page so we can diagnose API envelope issues
+        if (page === 1) {
+          const sample = batch[0];
+          this.logger.warn(
+            `searchClientByEmail archived=${archived} p1: ` +
+            `envelope_keys=[${Object.keys(raw ?? {}).join(',')}], ` +
+            `count=${batch.length}, ` +
+            `sample_email=${sample?.email ?? '(none)'}, sample_id=${(sample as any)?.id ?? '(none)'}`,
+          );
+        } else {
+          this.logger.warn(
+            `searchClientByEmail archived=${archived} p${page}: count=${batch.length}`,
+          );
+        }
 
         if (batch.length === 0) break;
 
