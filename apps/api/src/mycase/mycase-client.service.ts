@@ -186,28 +186,31 @@ export class MyCaseClientService {
     email: string,
   ): Promise<McClient | null> {
     const target = email.toLowerCase();
-    // Build the HTTP client directly — skip the 1 req/s write throttle since
-    // this is a read-only scan and needs to page quickly.
     const http = await this.buildClient(installationId);
-    const MAX_PAGES = 40;
-    let page = 1;
 
-    while (page <= MAX_PAGES) {
-      const res = await http.get('/clients', {
-        params: { email, page, page_size: 500 },
-      });
-      const batch: McClient[] = res.data.clients ?? res.data ?? [];
+    // Search both active and archived clients — archived clients are excluded
+    // from the default list but their email is still reserved (causes 422 on create).
+    for (const archived of [false, true]) {
+      const MAX_PAGES = 40;
+      let page = 1;
 
-      if (!Array.isArray(batch) || batch.length === 0) return null;
+      while (page <= MAX_PAGES) {
+        const res = await http.get('/clients', {
+          params: { email, page, page_size: 500, archived },
+        });
+        const batch: McClient[] = res.data.clients ?? res.data ?? [];
 
-      const found = batch.find((c) => c.email?.toLowerCase() === target);
-      if (found) return found;
+        if (!Array.isArray(batch) || batch.length === 0) break;
 
-      if (batch.length < 500) return null;
-      page++;
+        const found = batch.find((c) => c.email?.toLowerCase() === target);
+        if (found) return found;
+
+        if (batch.length < 500) break;
+        page++;
+      }
     }
 
-    this.logger.warn(`searchClientByEmail: "${email}" not found in first ${MAX_PAGES} pages`);
+    this.logger.warn(`searchClientByEmail: "${email}" not found in active or archived clients`);
     return null;
   }
 
