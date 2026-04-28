@@ -74,9 +74,10 @@ export class HsNoteToMcNoteProcessor extends BaseProcessor {
     }
 
     // 5. Build note payload — subject is first 80 chars of body if not mapped
-    const dateIso = note.properties.hs_timestamp
-      ? new Date(Number(note.properties.hs_timestamp)).toISOString()
-      : new Date().toISOString();
+    const rawTs = note.properties.hs_timestamp;
+    const tsMs = Number(rawTs);
+    const tsDate = isNaN(tsMs) ? new Date(rawTs ?? '') : new Date(tsMs);
+    const dateIso = !isNaN(tsDate.getTime()) ? tsDate.toISOString() : new Date().toISOString();
 
     const noteData: McNoteInput = {
       subject: (mapped['subject'] as string) ?? body.slice(0, 80),
