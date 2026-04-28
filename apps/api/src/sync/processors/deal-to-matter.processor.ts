@@ -198,12 +198,41 @@ export class DealToMatterProcessor extends BaseProcessor {
     );
 
     for (const contactId of contactIds) {
+      // 1. Check sync_records first (fast path)
       const record = await this.syncRecords.findByHubSpotId(
         installationId,
         'contact',
         contactId,
       );
       if (record) return record.mycaseObjectId;
+
+      // 2. No sync_record — contact may predate sync setup.
+      //    Fetch the contact's email and search MyCase directly.
+      try {
+        const contact = await this.hubspot.getContact(portalId, installationId, contactId);
+        const email = contact.properties?.email as string | undefined;
+        if (!email) continue;
+
+        const mcClient = await this.mycase.searchClientByEmail(installationId, email);
+        if (!mcClient) continue;
+
+        // Auto-link: create sync_record so future syncs use the fast path
+        const mycaseClientId = String(mcClient.id);
+        await this.syncRecords.upsert({
+          installationId,
+          objectType: 'contact',
+          hubspotObjectId: contactId,
+          mycaseObjectId: mycaseClientId,
+          payload: { email } as any,
+          direction: 'hs_to_mc',
+        });
+        this.logger.log(
+          `Auto-linked HubSpot contact ${contactId} to existing MyCase client ${mycaseClientId} via email match`,
+        );
+        return mycaseClientId;
+      } catch (err: any) {
+        this.logger.warn(`Could not resolve contact ${contactId} via email fallback: ${err.message}`);
+      }
     }
     return null;
   }
