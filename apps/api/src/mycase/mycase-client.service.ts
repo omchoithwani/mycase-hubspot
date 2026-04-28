@@ -195,9 +195,15 @@ export class MyCaseClientService {
         const res = await http.get('/clients', {
           params: { email, page, page_size: 500, archived },
         });
-        const batch: McClient[] = res.data.clients ?? res.data ?? [];
+        const raw = res.data;
+        const batch: McClient[] = raw?.clients ?? (Array.isArray(raw) ? raw : []);
 
-        if (!Array.isArray(batch) || batch.length === 0) break;
+        this.logger.debug(
+          `searchClientByEmail page=${page} archived=${archived}: ` +
+          `keys=${Object.keys(raw ?? {}).join(',')}, count=${batch.length}`,
+        );
+
+        if (batch.length === 0) break;
 
         const found = batch.find((c) => c.email?.toLowerCase() === target);
         if (found) return found;
