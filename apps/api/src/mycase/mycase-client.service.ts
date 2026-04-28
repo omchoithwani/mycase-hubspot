@@ -186,9 +186,10 @@ export class MyCaseClientService {
     email: string,
   ): Promise<McClient | null> {
     const target = email.toLowerCase();
+    const MAX_PAGES = 5;
     let page = 1;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
+
+    while (page <= MAX_PAGES) {
       const batch = await this.call(installationId, (http) =>
         http
           .get('/clients', { params: { email, page, page_size: 200 } })
@@ -200,10 +201,13 @@ export class MyCaseClientService {
       const found = batch.find((c) => c.email?.toLowerCase() === target);
       if (found) return found;
 
-      // If we got a full page there may be more; otherwise stop
+      // If fewer than a full page, no more results to fetch
       if (batch.length < 200) return null;
       page++;
     }
+
+    this.logger.warn(`searchClientByEmail: email "${email}" not found in first ${MAX_PAGES} pages`);
+    return null;
   }
 
   // ── Cases (Matters) ───────────────────────────────────────────────────────────

@@ -75,8 +75,9 @@ export class DealToMatterProcessor extends BaseProcessor {
     );
 
     if (!mycaseClientId) {
-      return this.skip(
-        'No linked MyCase client found — sync the associated contact first',
+      // Throw so BullMQ retries with backoff — the contact sync may still be in flight
+      throw new Error(
+        'No linked MyCase client found — contact sync may be in progress, will retry',
       );
     }
 
