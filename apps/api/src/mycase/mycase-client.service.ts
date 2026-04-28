@@ -217,35 +217,71 @@ export class MyCaseClientService {
   }
 
   /**
-   * Search by first+last name using MyCase filter params (small result set if filtering works).
-   * Checks up to 3 pages and matches email client-side as a fallback when email-only scan fails.
+   * Exhaustive conflict resolver — tries every filter the MyCase API might support.
+   * Called when createClient returns 422 "email taken" but searchClientByEmail fails.
+   * Each strategy fetches a small slice and matches email client-side.
    */
-  async searchClientByNameAndEmail(
+  async findClientByAnyMeans(
     installationId: string,
-    firstName: string,
-    lastName: string,
     email: string,
+    opts: { firstName?: string; lastName?: string; phone?: string },
   ): Promise<McClient | null> {
     const http = await this.buildClient(installationId);
-    const target = email.toLowerCase();
+    const targetEmail = email.toLowerCase();
+    const targetPhone = opts.phone?.replace(/\D/g, '').slice(-10) ?? '';
 
-    for (const archived of [false, true]) {
-      for (let page = 1; page <= 3; page++) {
-        const res = await http.get('/clients', {
-          params: { first_name: firstName, last_name: lastName, page, page_size: 200, archived },
-        });
-        const raw = res.data;
-        const batch: McClient[] = raw?.clients ?? (Array.isArray(raw) ? raw : []);
+    const matchesEmail = (c: McClient) => c.email?.toLowerCase() === targetEmail;
+    const matchesPhone = (c: McClient) => {
+      if (!targetPhone || targetPhone.length < 7) return false;
+      const n = (s?: string) => s?.replace(/\D/g, '').slice(-10) ?? '';
+      return n(c.cell_phone_number) === targetPhone || n(c.phone_number) === targetPhone;
+    };
 
-        if (batch.length === 0) break;
+    // Scan one batch (up to maxPages pages) using any filter params, match email client-side
+    const scanPages = async (params: Record<string, unknown>, maxPages = 3): Promise<McClient | null> => {
+      for (const archived of [false, true]) {
+        for (let page = 1; page <= maxPages; page++) {
+          const res = await http.get('/clients', { params: { ...params, page, page_size: 200, archived } });
+          const raw = res.data;
+          const batch: McClient[] = raw?.clients ?? (Array.isArray(raw) ? raw : []);
+          if (batch.length === 0) break;
+          const found = batch.find((c) => matchesEmail(c) || matchesPhone(c));
+          if (found) return found;
+          if (batch.length < 200) break;
+        }
+      }
+      return null;
+    };
 
-        const found = batch.find((c) => c.email?.toLowerCase() === target);
-        if (found) return found;
+    const strategies: Array<{ label: string; params: Record<string, unknown> }> = [];
 
-        if (batch.length < 200) break;
+    if (opts.firstName && opts.lastName) {
+      strategies.push({ label: 'first+last name', params: { first_name: opts.firstName, last_name: opts.lastName } });
+    }
+    if (opts.lastName) {
+      strategies.push({ label: 'last name only', params: { last_name: opts.lastName } });
+    }
+    if (opts.firstName) {
+      strategies.push({ label: 'first name only', params: { first_name: opts.firstName } });
+    }
+    if (opts.phone) {
+      strategies.push({ label: 'phone', params: { phone: opts.phone } });
+      strategies.push({ label: 'cell_phone_number', params: { cell_phone_number: opts.phone } });
+      // Try last-10-digit form in case MyCase stores without country code
+      if (targetPhone) {
+        strategies.push({ label: 'phone (digits)', params: { phone: targetPhone } });
       }
     }
 
+    for (const { label, params } of strategies) {
+      const found = await scanPages(params);
+      if (found) {
+        this.logger.log(`findClientByAnyMeans: found via "${label}" for email ${email} → client ${(found as any).id}`);
+        return found;
+      }
+    }
+
+    this.logger.warn(`findClientByAnyMeans: exhausted all strategies for email "${email}"`);
     return null;
   }
 

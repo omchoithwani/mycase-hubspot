@@ -151,20 +151,19 @@ export class ContactToClientProcessor extends BaseProcessor {
           await this.mycase.updateClient(installationId, mycaseId, clientData);
           action = 'updated';
         } else {
-          // Slow path 1: scan by email (paginates all clients, may miss on very large firms)
+          // Slow path: try email scan first, then every other filter MyCase might support
           let conflictClient = await this.mycase.searchClientByEmail(installationId, clientData.email);
 
-          // Slow path 2: scan by first+last name and match email client-side
-          if (!conflictClient && clientData.first_name && clientData.last_name) {
-            conflictClient = await this.mycase.searchClientByNameAndEmail(
+          if (!conflictClient) {
+            conflictClient = await this.mycase.findClientByAnyMeans(
               installationId,
-              clientData.first_name,
-              clientData.last_name,
               clientData.email,
+              {
+                firstName: clientData.first_name,
+                lastName: clientData.last_name,
+                phone: clientData.cell_phone_number,
+              },
             );
-            if (conflictClient) {
-              this.logger.log(`Resolved email conflict via name search: contact ${sourceId} → MyCase client ${conflictClient.id}`);
-            }
           }
 
           if (!conflictClient) {
