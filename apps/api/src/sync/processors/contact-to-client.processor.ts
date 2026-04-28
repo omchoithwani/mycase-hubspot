@@ -128,10 +128,38 @@ export class ContactToClientProcessor extends BaseProcessor {
         return this.skip(`Linked to existing MyCase client (${dupResult.confidence} match)`);
       }
 
-      const created = await this.mycase.createClient(installationId, clientData);
-      mycaseId = String(created.id);
-      action = 'created';
-      this.logger.log(`Created MyCase client ${mycaseId} from HubSpot contact ${sourceId}`);
+      try {
+        const created = await this.mycase.createClient(installationId, clientData);
+        mycaseId = String(created.id);
+        action = 'created';
+        this.logger.log(`Created MyCase client ${mycaseId} from HubSpot contact ${sourceId}`);
+      } catch (err: any) {
+        // MyCase rejects creation when the email already exists — find and update instead
+        const body = err?.response?.data ?? {};
+        const isEmailConflict =
+          err?.response?.status === 422 &&
+          JSON.stringify(body).toLowerCase().includes('email');
+
+        if (!isEmailConflict || !clientData.email) throw err;
+
+        this.logger.warn(
+          `createClient 422 email conflict for contact ${sourceId} — searching MyCase by email`,
+        );
+        const existing = await this.mycase.searchClientByEmail(installationId, clientData.email);
+        if (!existing) {
+          return this.failed(
+            'VALIDATION',
+            `MyCase rejected client creation: ${JSON.stringify(body)}`,
+          );
+        }
+
+        mycaseId = String(existing.id);
+        await this.mycase.updateClient(installationId, mycaseId, clientData);
+        action = 'updated';
+        this.logger.log(
+          `Resolved email conflict: linked contact ${sourceId} → existing MyCase client ${mycaseId}`,
+        );
+      }
     } else {
       this.logger.log(`Updating MyCase client ${mycaseId} from HubSpot contact ${sourceId}`);
       await this.mycase.updateClient(installationId, mycaseId, clientData);

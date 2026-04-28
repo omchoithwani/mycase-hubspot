@@ -185,14 +185,25 @@ export class MyCaseClientService {
     installationId: string,
     email: string,
   ): Promise<McClient | null> {
-    const clients = await this.call(installationId, (http) =>
-      http
-        .get('/clients', { params: { email } })
-        .then((r) => r.data.clients ?? r.data ?? []),
-    );
-    return (clients as McClient[]).find(
-      (c) => c.email?.toLowerCase() === email.toLowerCase(),
-    ) ?? null;
+    const target = email.toLowerCase();
+    let page = 1;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const batch = await this.call(installationId, (http) =>
+        http
+          .get('/clients', { params: { email, page, page_size: 200 } })
+          .then((r) => r.data.clients ?? r.data ?? []),
+      ) as McClient[];
+
+      if (!Array.isArray(batch) || batch.length === 0) return null;
+
+      const found = batch.find((c) => c.email?.toLowerCase() === target);
+      if (found) return found;
+
+      // If we got a full page there may be more; otherwise stop
+      if (batch.length < 200) return null;
+      page++;
+    }
   }
 
   // ── Cases (Matters) ───────────────────────────────────────────────────────────
