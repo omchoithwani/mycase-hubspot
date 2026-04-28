@@ -13,7 +13,7 @@ import { QUEUE_HS_TO_MC, SYNC_JOB_OPTIONS } from '../queue/queue.constants';
 @Injectable()
 export class HubSpotPollerService {
   private readonly logger = new Logger(HubSpotPollerService.name);
-  private isRunning = false;
+  private readonly running = { contact: false, deal: false, note: false };
 
   constructor(
     @InjectQueue(QUEUE_HS_TO_MC) private readonly queue: Queue<SyncJobPayload>,
@@ -23,29 +23,37 @@ export class HubSpotPollerService {
     private readonly hubspotClient: HubSpotClientService,
   ) {}
 
-  @Cron('*/2 * * * *')
-  async poll(): Promise<void> {
-    if (this.isRunning) {
-      this.logger.verbose('HubSpot poll already running — skipping');
+  @Cron('*/3 * * * *')
+  async pollContacts(): Promise<void> {
+    await this.runPoll('contact');
+  }
+
+  @Cron('1/3 * * * *')
+  async pollDeals(): Promise<void> {
+    await this.runPoll('deal');
+  }
+
+  @Cron('2/3 * * * *')
+  async pollNotes(): Promise<void> {
+    await this.runPoll('note');
+  }
+
+  private async runPoll(objectType: 'contact' | 'deal' | 'note'): Promise<void> {
+    if (this.running[objectType]) {
+      this.logger.verbose(`HubSpot ${objectType} poll already running — skipping`);
       return;
     }
-    this.isRunning = true;
+    this.running[objectType] = true;
 
     try {
       const installations = await this.installationService.findAllActive();
-      this.logger.debug(`Polling HubSpot for ${installations.length} installation(s)`);
-
       for (const installation of installations) {
-        // Sequential — search API has a tighter per-second limit than the overall bucket;
-        // firing all three in parallel causes 429 bursts.
-        await this.pollObjectType(installation.id, installation.hubspotPortalId, 'contact');
-        await this.pollObjectType(installation.id, installation.hubspotPortalId, 'deal');
-        await this.pollObjectType(installation.id, installation.hubspotPortalId, 'note');
+        await this.pollObjectType(installation.id, installation.hubspotPortalId, objectType);
       }
     } catch (err: any) {
-      this.logger.error(`HubSpot poll error: ${err.message}`, err.stack);
+      this.logger.error(`HubSpot ${objectType} poll error: ${err.message}`, err.stack);
     } finally {
-      this.isRunning = false;
+      this.running[objectType] = false;
     }
   }
 
