@@ -186,27 +186,28 @@ export class MyCaseClientService {
     email: string,
   ): Promise<McClient | null> {
     const target = email.toLowerCase();
-    const MAX_PAGES = 5;
+    // Build the HTTP client directly — skip the 1 req/s write throttle since
+    // this is a read-only scan and needs to page quickly.
+    const http = await this.buildClient(installationId);
+    const MAX_PAGES = 40;
     let page = 1;
 
     while (page <= MAX_PAGES) {
-      const batch = await this.call(installationId, (http) =>
-        http
-          .get('/clients', { params: { email, page, page_size: 200 } })
-          .then((r) => r.data.clients ?? r.data ?? []),
-      ) as McClient[];
+      const res = await http.get('/clients', {
+        params: { email, page, page_size: 500 },
+      });
+      const batch: McClient[] = res.data.clients ?? res.data ?? [];
 
       if (!Array.isArray(batch) || batch.length === 0) return null;
 
       const found = batch.find((c) => c.email?.toLowerCase() === target);
       if (found) return found;
 
-      // If fewer than a full page, no more results to fetch
-      if (batch.length < 200) return null;
+      if (batch.length < 500) return null;
       page++;
     }
 
-    this.logger.warn(`searchClientByEmail: email "${email}" not found in first ${MAX_PAGES} pages`);
+    this.logger.warn(`searchClientByEmail: "${email}" not found in first ${MAX_PAGES} pages`);
     return null;
   }
 
