@@ -141,26 +141,31 @@ export class ContactToClientProcessor extends BaseProcessor {
 
         if (!isEmailConflict || !clientData.email) throw err;
 
-        // Email is taken in MyCase — try to find the existing client and update instead
-        const existing = await this.mycase.searchClientByEmail(installationId, clientData.email);
-        if (!existing) {
-          // Client not findable via API (may be a staff/user account or outside API visibility).
-          // Return a non-retrying failure — user must manually link in MyCase.
-          return this.failed(
-            'EMAIL_CONFLICT_UNRESOLVABLE',
-            `MyCase reports email "${clientData.email}" is already taken but the client cannot be found via the API. ` +
-            `This usually means the email belongs to a MyCase staff/user account. ` +
-            `To fix: in MyCase, change the email on the conflicting account, then re-sync.`,
-          );
-        }
-        }
+        this.logger.warn(`createClient 422 email conflict for contact ${sourceId} — resolving`);
 
-        mycaseId = String(existing.id);
-        await this.mycase.updateClient(installationId, mycaseId, clientData);
-        action = 'updated';
-        this.logger.log(
-          `Resolved email conflict: linked contact ${sourceId} → existing MyCase client ${mycaseId}`,
-        );
+        // Fast path: HubSpot contact may already have mycase_client_id set (manual or prior sync)
+        const knownMycaseId = contact.properties.mycase_client_id as string | undefined;
+        if (knownMycaseId) {
+          this.logger.log(`Resolved via HS mycase_client_id=${knownMycaseId} for contact ${sourceId}`);
+          mycaseId = knownMycaseId;
+          await this.mycase.updateClient(installationId, mycaseId, clientData);
+          action = 'updated';
+        } else {
+          // Slow path: search MyCase by email (may be unreliable for large firms)
+          const conflictClient = await this.mycase.searchClientByEmail(installationId, clientData.email);
+          if (!conflictClient) {
+            return this.failed(
+              'EMAIL_CONFLICT_UNRESOLVABLE',
+              `MyCase reports email "${clientData.email}" is already taken but the client cannot be found via the API. ` +
+              `To fix: open the HubSpot contact, set the "MyCase Client ID" field to the correct MyCase client ID, then re-sync. ` +
+              `Alternatively, change the email on the conflicting MyCase account.`,
+            );
+          }
+          mycaseId = String(conflictClient.id);
+          await this.mycase.updateClient(installationId, mycaseId, clientData);
+          action = 'updated';
+          this.logger.log(`Resolved email conflict: contact ${sourceId} → MyCase client ${mycaseId}`);
+        }
       }
     } else {
       this.logger.log(`Updating MyCase client ${mycaseId} from HubSpot contact ${sourceId}`);
