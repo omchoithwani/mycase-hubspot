@@ -49,7 +49,7 @@ export class MyCaseClientService {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      timeout: 20_000,
+      timeout: 8_000, // 8s hard timeout — prevents worker stalls on slow/hung MyCase responses
     });
 
     // Retry transient errors (network, 5xx) up to 3 times with exponential backoff
