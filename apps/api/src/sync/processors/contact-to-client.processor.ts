@@ -63,12 +63,12 @@ export class ContactToClientProcessor extends BaseProcessor {
     );
     if (!eligible) return this.skip('Record does not meet sync criteria');
 
-    // 3. Apply configured field mapping
+    // 3. Apply configured field mapping (hs_object_id injected so users can map it to a MyCase custom field)
     const mapped = await this.fieldMapping.applyMapping(
       installationId,
       'contact',
       'hs_to_mc',
-      contact.properties as Record<string, unknown>,
+      { ...contact.properties as Record<string, unknown>, hs_object_id: contact.id },
     );
 
     // 4. Build MyCase client (mapped fields + required fallbacks)

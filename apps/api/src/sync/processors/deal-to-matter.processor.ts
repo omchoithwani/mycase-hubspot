@@ -81,12 +81,12 @@ export class DealToMatterProcessor extends BaseProcessor {
       );
     }
 
-    // 4. Apply field mapping
+    // 4. Apply field mapping (hs_object_id injected so users can map it to a MyCase custom field)
     const mapped = await this.fieldMapping.applyMapping(
       installationId,
       'deal',
       'hs_to_mc',
-      props as Record<string, unknown>,
+      { ...props as Record<string, unknown>, hs_object_id: deal.id },
     );
 
     // 5. Resolve deal stage → MyCase status
@@ -178,10 +178,10 @@ export class DealToMatterProcessor extends BaseProcessor {
         installation.hubspotPortalId,
         installationId,
         sourceId,
-        { mycase_matter_id: mycaseId },
+        { my_case_id: mycaseId },
       );
     } catch {
-      this.logger.warn(`Could not write mycase_matter_id back to deal ${sourceId}`);
+      this.logger.warn(`Could not write my_case_id back to deal ${sourceId}`);
     }
 
     return { success: true, action, destinationId: mycaseId };

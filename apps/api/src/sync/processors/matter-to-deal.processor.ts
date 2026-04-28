@@ -69,7 +69,7 @@ export class MatterToDealProcessor extends BaseProcessor {
     // 6. Compose final deal payload
     const dealData: HsDealInput = {
       dealname: (mapped['dealname'] as string) ?? matter.name,
-      mycase_matter_id: sourceId,
+      my_case_id: sourceId,
       closedate:
         (mapped['closedate'] as string) ??
         (matter.sol_date ? String(new Date(matter.sol_date).getTime()) : undefined),

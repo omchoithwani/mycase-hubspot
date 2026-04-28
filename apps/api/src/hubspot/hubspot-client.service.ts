@@ -156,7 +156,7 @@ export class HubSpotClientService {
   ): Promise<HsDeal> {
     const props = properties?.length
       ? properties.join(',')
-      : 'dealname,amount,closedate,dealstage,pipeline,mycase_matter_id';
+      : 'dealname,amount,closedate,dealstage,pipeline,my_case_id';
     return this.call(portalId, installationId, (http) =>
       http
         .get(`/crm/v3/objects/deals/${dealId}`, {
@@ -195,7 +195,7 @@ export class HubSpotClientService {
     portalId: string,
     installationId: string,
     filterGroups: object[],
-    properties: string[] = ['dealname', 'amount', 'dealstage', 'pipeline', 'mycase_matter_id'],
+    properties: string[] = ['dealname', 'amount', 'dealstage', 'pipeline', 'my_case_id'],
   ): Promise<HsDeal[]> {
     return this.call(portalId, installationId, (http) =>
       http
@@ -402,7 +402,7 @@ export class HubSpotClientService {
               }],
             }],
             sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'ASCENDING' }],
-            properties: ['dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'mycase_matter_id'],
+            properties: ['dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'my_case_id'],
             limit: 100,
             ...(after ? { after } : {}),
           })
@@ -449,7 +449,7 @@ export class HubSpotClientService {
           params: {
             limit: 100,
             after,
-            properties: 'dealname,amount,closedate,dealstage,pipeline,mycase_matter_id',
+            properties: 'dealname,amount,closedate,dealstage,pipeline,my_case_id',
           },
         })
         .then((r) => ({

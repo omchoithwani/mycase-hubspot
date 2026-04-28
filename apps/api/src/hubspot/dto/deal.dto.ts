@@ -6,7 +6,7 @@ export interface HsDeal {
     closedate?: string;
     dealstage?: string;
     pipeline?: string;
-    mycase_matter_id?: string;
+    my_case_id?: string;
     [key: string]: string | undefined;
   };
   createdAt?: string;
@@ -19,7 +19,7 @@ export interface HsDealInput {
   closedate?: string;
   dealstage?: string;
   pipeline?: string;
-  mycase_matter_id?: string;
+  my_case_id?: string;
   [key: string]: string | undefined;
 }
 

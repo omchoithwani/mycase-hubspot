@@ -153,7 +153,7 @@ export class HubSpotOAuthService {
       {
         objectType: 'deals',
         property: {
-          name: 'mycase_matter_id',
+          name: 'my_case_id',
           label: 'MyCase Matter ID',
           type: 'string',
           fieldType: 'text',
