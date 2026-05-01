@@ -1,15 +1,10 @@
 {
-  "type": "crm-card",
-  "title": "MyCase Client",
   "uid": "mycase-contact-card",
-  "location": "crm.record.tab",
-  "objectTypes": [
-    {
-      "name": "contacts",
-      "propertiesToSend": ["email", "firstname", "lastname", "my_case_id"]
-    }
-  ],
-  "allowedUrls": [
-    "https://mycase-hubspot.fly.dev"
-  ]
+  "type": "card",
+  "config": {
+    "name": "MyCase Client",
+    "location": "crm.record.tab",
+    "entrypoint": "/app/cards/MyCaseContactCard.jsx",
+    "objectTypes": ["contacts"]
+  }
 }

@@ -1,15 +1,10 @@
 {
-  "type": "crm-card",
-  "title": "MyCase Case",
   "uid": "mycase-deal-card",
-  "location": "crm.record.tab",
-  "objectTypes": [
-    {
-      "name": "deals",
-      "propertiesToSend": ["dealname", "my_case_id"]
-    }
-  ],
-  "allowedUrls": [
-    "https://mycase-hubspot.fly.dev"
-  ]
+  "type": "card",
+  "config": {
+    "name": "MyCase Case",
+    "location": "crm.record.tab",
+    "entrypoint": "/app/cards/MyCaseDealCard.jsx",
+    "objectTypes": ["deals"]
+  }
 }
