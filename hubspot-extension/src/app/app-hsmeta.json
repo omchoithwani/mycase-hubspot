@@ -4,6 +4,19 @@
   "config": {
     "name": "MyCase HubSpot Sync",
     "description": "Displays linked MyCase client and case data on HubSpot Contact and Deal records.",
+    "scopes": [
+      "crm.objects.contacts.read",
+      "crm.objects.contacts.write",
+      "crm.objects.deals.read",
+      "crm.objects.deals.write",
+      "crm.objects.notes.read",
+      "crm.objects.notes.write",
+      "crm.schemas.contacts.write",
+      "oauth"
+    ],
+    "redirectUrls": [
+      "https://mycase-hubspot.fly.dev/auth/hubspot/callback"
+    ],
     "permittedUrls": {
       "fetch": ["https://mycase-hubspot.fly.dev"],
       "iframe": [],
