@@ -24,6 +24,7 @@ export class MyCaseOAuthService {
       redirect_uri: this.config.getOrThrow('MYCASE_REDIRECT_URI'),
       response_type: 'code',
       state,
+      prompt: 'login',
     });
     return `${MYCASE_AUTH_URL}?${params.toString()}`;
   }
