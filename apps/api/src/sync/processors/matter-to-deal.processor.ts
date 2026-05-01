@@ -11,32 +11,12 @@ import { DuplicateDetectorService } from '../../duplicate/duplicate-detector.ser
 import { SyncCriteriaService } from '../../sync-criteria/sync-criteria.service';
 import { HsDealInput } from '../../hubspot/dto/deal.dto';
 
-/** Normalize a custom field name for loose matching ("Case Value" → "casevalue") */
-function normalizeFieldName(name: string): string {
-  return name.toLowerCase().replace(/[\s_-]/g, '');
-}
-
 @Injectable()
 export class MatterToDealProcessor extends BaseProcessor {
   readonly objectType = 'deal' as const;
   readonly direction = 'mc_to_hs' as const;
 
   private readonly logger = new Logger(MatterToDealProcessor.name);
-
-  /** Simple per-installation cache so we don't call listCustomFields on every sync job */
-  private readonly customFieldCache = new Map<string, { fields: Array<{ id: number; name: string; parent_type: string }>; expiresAt: number }>();
-
-  private async getCaseCustomFields(installationId: string) {
-    const cached = this.customFieldCache.get(installationId);
-    if (cached && cached.expiresAt > Date.now()) return cached.fields;
-
-    const all = await this.mycase.listCustomFields(installationId);
-    const caseFields = all.filter((f) =>
-      f.parent_type?.toLowerCase() === 'case' || f.parent_type?.toLowerCase() === 'matter',
-    );
-    this.customFieldCache.set(installationId, { fields: caseFields, expiresAt: Date.now() + 10 * 60 * 1000 });
-    return caseFields;
-  }
 
   constructor(
     private readonly installationService: InstallationService,
@@ -74,22 +54,16 @@ export class MatterToDealProcessor extends BaseProcessor {
       : null;
 
     // 4. Flatten custom_field_values into the mapping source so field mappings
-    //    can reference them as custom_field:{id}, and find "case value" by name.
-    const caseFields = await this.getCaseCustomFields(installationId);
+    //    can reference any custom field as custom_field:{id}
     const customFlat: Record<string, unknown> = {};
-    let caseValueAmount: string | undefined;
-
     for (const cfv of matter.custom_field_values ?? []) {
       const cfId = cfv.custom_field?.id;
-      if (cfId == null) continue;
-      customFlat[`custom_field:${cfId}`] = cfv.value;
-
-      // Match by name so "case value" works without any field mapping config
-      const meta = caseFields.find((f) => f.id === cfId);
-      if (meta && normalizeFieldName(meta.name) === 'casevalue' && cfv.value != null) {
-        caseValueAmount = String(cfv.value);
-      }
+      if (cfId != null) customFlat[`custom_field:${cfId}`] = cfv.value;
     }
+
+    this.logger.log(
+      `matter-to-deal [${sourceId}]: custom fields on matter: ${JSON.stringify(customFlat)}`,
+    );
 
     // 5. Apply configured field mapping (custom fields now available as custom_field:ID)
     const mapped = await this.fieldMapping.applyMapping(
@@ -114,16 +88,14 @@ export class MatterToDealProcessor extends BaseProcessor {
       : null;
 
     // 8. Compose final deal payload
-    // Priority: field mapping config > "case value" custom field > outstanding_balance fallback
     const amount =
       (mapped['amount'] as string | undefined) ??
-      caseValueAmount ??
       (matter.outstanding_balance != null && matter.outstanding_balance !== 0
         ? String(matter.outstanding_balance)
         : undefined);
 
     this.logger.log(
-      `matter-to-deal [${sourceId}]: name="${matter.name}" case_value=${caseValueAmount} outstanding_balance=${matter.outstanding_balance} → amount=${amount}`,
+      `matter-to-deal [${sourceId}]: name="${matter.name}" mapped_amount=${mapped['amount']} → amount=${amount}`,
     );
 
     const dealData: HsDealInput = {
