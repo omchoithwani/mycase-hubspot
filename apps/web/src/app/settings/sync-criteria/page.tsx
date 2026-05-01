@@ -29,6 +29,29 @@ interface SyncCriteriaRule {
   isActive: boolean;
 }
 
+const MC_FIELDS: Record<ObjectType, HsProperty[]> = {
+  contact: [
+    { name: 'first_name', label: 'First Name', type: 'string', fieldType: 'text', groupName: 'client' },
+    { name: 'last_name', label: 'Last Name', type: 'string', fieldType: 'text', groupName: 'client' },
+    { name: 'email', label: 'Email', type: 'string', fieldType: 'text', groupName: 'client' },
+    { name: 'phone_numbers[0].number', label: 'Phone Number', type: 'string', fieldType: 'text', groupName: 'client' },
+    { name: 'company_name', label: 'Company Name', type: 'string', fieldType: 'text', groupName: 'client' },
+    { name: 'status', label: 'Status', type: 'enumeration', fieldType: 'select', groupName: 'client', options: [{ label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }] },
+  ],
+  deal: [
+    { name: 'name', label: 'Case Name', type: 'string', fieldType: 'text', groupName: 'matter' },
+    { name: 'status', label: 'Status', type: 'enumeration', fieldType: 'select', groupName: 'matter', options: [{ label: 'Open', value: 'open' }, { label: 'Closed', value: 'closed' }] },
+    { name: 'practice_area', label: 'Practice Area', type: 'string', fieldType: 'text', groupName: 'matter' },
+    { name: 'case_stage', label: 'Case Stage', type: 'string', fieldType: 'text', groupName: 'matter' },
+    { name: 'close_date', label: 'Close Date', type: 'date', fieldType: 'date', groupName: 'matter' },
+    { name: 'rate', label: 'Rate (cents)', type: 'number', fieldType: 'number', groupName: 'matter' },
+  ],
+  note: [
+    { name: 'description', label: 'Description', type: 'string', fieldType: 'textarea', groupName: 'note' },
+    { name: 'date', label: 'Date', type: 'date', fieldType: 'date', groupName: 'note' },
+  ],
+};
+
 // Operators available per field type
 const OPS_TEXT = ['EQ','NEQ','CONTAINS','NOT_CONTAINS','STARTS_WITH','ENDS_WITH','HAS_PROPERTY','NOT_HAS_PROPERTY'];
 const OPS_NUMBER = ['EQ','NEQ','GT','GTE','LT','LTE','BETWEEN','HAS_PROPERTY','NOT_HAS_PROPERTY'];
@@ -448,10 +471,13 @@ function SyncCriteriaContent() {
 
   useEffect(() => { void fetchRules(); }, [fetchRules]);
 
-  // Re-fetch properties when modal object type changes
+  // Re-fetch HubSpot properties when modal opens or object type changes (only for HubSpot source)
   useEffect(() => {
-    if (showModal) void fetchProperties(modalObjectType);
-  }, [showModal, modalObjectType, fetchProperties]);
+    if (showModal && modalSourceSystem === 'hubspot') void fetchProperties(modalObjectType);
+  }, [showModal, modalObjectType, modalSourceSystem, fetchProperties]);
+
+  const activeProperties =
+    modalSourceSystem === 'mycase' ? (MC_FIELDS[modalObjectType] ?? []) : hsProperties;
 
   // ── Filter group mutations ──────────────────────────────────────────────────
 
@@ -481,7 +507,7 @@ function SyncCriteriaContent() {
 
   // When field changes, reset operator to sensible default for the field type
   function handleFieldChange(gi: number, fi: number, fieldName: string) {
-    const prop = hsProperties.find((p) => p.name === fieldName);
+    const prop = activeProperties.find((p) => p.name === fieldName);
     const op = prop ? defaultOpForType(prop.type, prop.fieldType) : 'EQ';
     updateFilter(gi, fi, { field: fieldName, operator: op, value: '' });
   }
@@ -952,7 +978,7 @@ function SyncCriteriaContent() {
                 {propsError && !loadingProps && (
                   <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex items-start gap-2 mb-2">
                     <span className="material-symbols-outlined text-[14px] flex-shrink-0 mt-0.5">error_outline</span>
-                    <span>Could not load HubSpot fields: {propsError}. Check that the API is reachable and CORS is configured.</span>
+                    <span>Could not load {modalSourceSystem === 'mycase' ? 'MyCase' : 'HubSpot'} fields: {propsError}.</span>
                   </div>
                 )}
 
@@ -976,7 +1002,7 @@ function SyncCriteriaContent() {
 
                         <div className="space-y-2">
                           {group.filters.map((filter, fi) => {
-                            const prop = hsProperties.find((p) => p.name === filter.field);
+                            const prop = activeProperties.find((p) => p.name === filter.field);
                             const opsForField = prop ? getOpsForType(prop.type, prop.fieldType) : ALL_OPERATORS;
                             return (
                               <div key={fi} className="flex gap-2 items-start">
@@ -984,8 +1010,8 @@ function SyncCriteriaContent() {
                                 <FieldPicker
                                   value={filter.field}
                                   onChange={(v) => handleFieldChange(gi, fi, v)}
-                                  properties={hsProperties}
-                                  loading={loadingProps}
+                                  properties={activeProperties}
+                                  loading={modalSourceSystem === 'hubspot' && loadingProps}
                                 />
 
                                 {/* Operator */}
