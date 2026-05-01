@@ -14,7 +14,8 @@ import { MyCaseClientService } from '../mycase/mycase-client.service';
 
 const MYCASE_API_DEFAULT = 'https://external-integrations.mycase.com/v1';
 
-function mycaseWebBase(baseUrl: string | null): string {
+function mycaseWebBase(baseUrl: string | null, webBase: string | null): string {
+  if (webBase) return webBase.replace(/\/$/, '');
   try {
     const url = new URL(baseUrl ?? MYCASE_API_DEFAULT);
     return `${url.protocol}//${url.hostname}`;
@@ -69,7 +70,8 @@ export class CrmCardController {
       const name =
         [client.first_name, client.last_name].filter(Boolean).join(' ') ||
         `Client #${client.id}`;
-      const profileUrl = `${mycaseWebBase(installation.mycaseBaseUrl)}/contacts/clients/${client.id}`;
+      const webBase = this.config.get<string>('MYCASE_WEB_BASE') ?? null;
+      const profileUrl = `${mycaseWebBase(installation.mycaseBaseUrl, webBase)}/contacts/clients/${client.id}`;
 
       return {
         results: [
@@ -126,7 +128,8 @@ export class CrmCardController {
 
     try {
       const matter = await this.mycase.getMatter(installation.id, mycaseObjectId);
-      const caseUrl = `${mycaseWebBase(installation.mycaseBaseUrl)}/cases/${matter.id}`;
+      const webBase = this.config.get<string>('MYCASE_WEB_BASE') ?? null;
+      const caseUrl = `${mycaseWebBase(installation.mycaseBaseUrl, webBase)}/cases/${matter.id}`;
 
       return {
         results: [
