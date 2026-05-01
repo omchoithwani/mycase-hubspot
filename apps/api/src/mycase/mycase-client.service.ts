@@ -173,10 +173,14 @@ export class MyCaseClientService {
     since?: Date,
   ): Promise<McClient[]> {
     const results: McClient[] = [];
-    const baseParams: Record<string, unknown> = { page_size: 200 };
+    const baseParams: Record<string, unknown> = {
+      page_size: 200,
+      sort: 'updated_at',
+      direction: 'desc',
+    };
     if (since) baseParams.updated_since = since.toISOString();
 
-    for (let page = 1; page <= 20; page++) {
+    for (let page = 1; page <= 50; page++) {
       const batch = await this.call(installationId, (http) =>
         http.get('/clients', { params: { ...baseParams, page } }).then((r) => {
           const raw = r.data;
@@ -184,6 +188,14 @@ export class MyCaseClientService {
         }),
       );
       results.push(...batch);
+
+      // Early exit: if sorted desc by updated_at, stop once we reach records older than cursor
+      if (since && batch.length > 0) {
+        const oldest = batch[batch.length - 1];
+        const oldestDate = oldest.updated_at ?? oldest.created_at;
+        if (oldestDate && new Date(oldestDate) < since) break;
+      }
+
       if (batch.length < 200) break;
     }
 
@@ -326,10 +338,14 @@ export class MyCaseClientService {
     since?: Date,
   ): Promise<McMatter[]> {
     const results: McMatter[] = [];
-    const baseParams: Record<string, unknown> = { page_size: 200 };
+    const baseParams: Record<string, unknown> = {
+      page_size: 200,
+      sort: 'updated_at',
+      direction: 'desc',
+    };
     if (since) baseParams.updated_since = since.toISOString();
 
-    for (let page = 1; page <= 20; page++) {
+    for (let page = 1; page <= 50; page++) {
       const batch = await this.call(installationId, (http) =>
         http.get('/cases', { params: { ...baseParams, page } }).then((r) => {
           const raw = r.data;
@@ -337,6 +353,14 @@ export class MyCaseClientService {
         }),
       );
       results.push(...batch);
+
+      // Early exit: if sorted desc by updated_at, stop once we reach records older than cursor
+      if (since && batch.length > 0) {
+        const oldest = batch[batch.length - 1];
+        const oldestDate = oldest.updated_at ?? oldest.created_at;
+        if (oldestDate && new Date(oldestDate) < since) break;
+      }
+
       if (batch.length < 200) break;
     }
 
