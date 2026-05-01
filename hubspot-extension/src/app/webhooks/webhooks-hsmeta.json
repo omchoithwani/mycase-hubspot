@@ -1,0 +1,21 @@
+{
+  "uid": "mycase-hubspot-webhooks",
+  "type": "webhooks",
+  "config": {
+    "settings": {
+      "targetUrl": "https://mycase-hubspot.fly.dev/webhooks/hubspot"
+    },
+    "subscriptions": {
+      "contact_creation": { "eventType": "contact.creation" },
+      "contact_email": { "eventType": "contact.propertyChange", "propertyName": "email" },
+      "contact_firstname": { "eventType": "contact.propertyChange", "propertyName": "firstname" },
+      "contact_lastname": { "eventType": "contact.propertyChange", "propertyName": "lastname" },
+      "contact_phone": { "eventType": "contact.propertyChange", "propertyName": "phone" },
+      "deal_creation": { "eventType": "deal.creation" },
+      "deal_name": { "eventType": "deal.propertyChange", "propertyName": "dealname" },
+      "deal_amount": { "eventType": "deal.propertyChange", "propertyName": "amount" },
+      "deal_stage": { "eventType": "deal.propertyChange", "propertyName": "dealstage" },
+      "deal_closedate": { "eventType": "deal.propertyChange", "propertyName": "closedate" }
+    }
+  }
+}
