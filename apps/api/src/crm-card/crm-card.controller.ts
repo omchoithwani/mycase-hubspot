@@ -120,7 +120,7 @@ export class CrmCardController {
 
     try {
       const matter = await this.mycase.getMatter(installation.id, mycaseObjectId);
-      const caseUrl = `${mycaseWebBase(installation.mycaseWebBaseUrl)}/court-cases/${matter.id}`;
+      const caseUrl = `${mycaseWebBase(installation.mycaseWebBaseUrl)}/court_cases/${matter.id}`;
 
       return {
         results: [
