@@ -61,36 +61,49 @@ export class MatterToDealProcessor extends BaseProcessor {
       matter as unknown as Record<string, unknown>,
     );
 
-    // 5. Resolve MyCase status → HubSpot stage
-    const hsStage = matter.status
+    // 5. Check for existing sync record first so we know if this is create or update
+    const existing = await this.syncRecords.findByMyCaseId(
+      installationId,
+      'deal',
+      sourceId,
+    );
+
+    // 6. Resolve MyCase status → HubSpot stage — only on create.
+    //    On updates, leave the stage as-is in HubSpot (let users manage it there).
+    //    Stage mapping requires explicit user configuration — seeded defaults are
+    //    only used for the initial stage when a deal is first created.
+    const isCreate = !existing?.hubspotObjectId;
+    const hsStage = isCreate && matter.status
       ? await this.stageMapping.toHubSpotStage(installationId, matter.status)
       : null;
 
-    // 6. Compose final deal payload
+    // 7. Compose final deal payload
+    const amount =
+      (mapped['amount'] as string | undefined) ??
+      (matter.outstanding_balance != null && matter.outstanding_balance !== 0
+        ? String(matter.outstanding_balance)
+        : undefined);
+
+    this.logger.log(
+      `matter-to-deal [${sourceId}]: name="${matter.name}" status="${matter.status}" outstanding_balance=${matter.outstanding_balance} → amount=${amount}`,
+    );
+
     const dealData: HsDealInput = {
       dealname: (mapped['dealname'] as string) ?? matter.name,
       my_case_id: sourceId,
       closedate:
         (mapped['closedate'] as string) ??
         (matter.sol_date ? String(new Date(matter.sol_date).getTime()) : undefined),
-      amount:
-        (mapped['amount'] as string) ??
-        (matter.outstanding_balance != null ? String(matter.outstanding_balance) : undefined),
-      dealstage: hsStage?.stageId,
-      pipeline: hsStage?.pipelineId,
+      amount,
+      ...(hsStage ? { dealstage: hsStage.stageId, pipeline: hsStage.pipelineId } : {}),
     };
 
-    // 7. Change detection
-    const existing = await this.syncRecords.findByMyCaseId(
-      installationId,
-      'deal',
-      sourceId,
-    );
+    // 8. Change detection
     if (existing && this.syncRecords.isSamePayload(existing, dealData as any)) {
       return this.skip('Payload unchanged since last sync');
     }
 
-    // 8. Duplicate detection (create path only)
+    // 9. Duplicate detection (create path only)
     let hubspotId = existing?.hubspotObjectId;
     let action: 'created' | 'updated';
 
