@@ -1,5 +1,6 @@
 {
   "name": "mycase-hubspot",
   "srcDir": "src",
-  "platformVersion": "2025.2"
+  "platformVersion": "2025.2",
+  "appId": 38277878
 }
