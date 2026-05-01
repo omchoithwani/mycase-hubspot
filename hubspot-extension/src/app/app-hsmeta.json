@@ -5,7 +5,9 @@
     "name": "MyCase HubSpot Sync",
     "description": "Displays linked MyCase client and case data on HubSpot Contact and Deal records.",
     "permittedUrls": {
-      "fetch": ["https://mycase-hubspot.fly.dev"]
+      "fetch": ["https://mycase-hubspot.fly.dev"],
+      "iframe": [],
+      "img": []
     },
     "distribution": "private"
   }
