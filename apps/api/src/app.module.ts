@@ -18,6 +18,7 @@ import { FieldMappingModule } from './field-mapping/field-mapping.module';
 import { StageMappingModule } from './stage-mapping/stage-mapping.module';
 import { SyncCriteriaModule } from './sync-criteria/sync-criteria.module';
 import { ErrorLogModule } from './error-log/error-log.module';
+import { CrmCardModule } from './crm-card/crm-card.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { ErrorLogModule } from './error-log/error-log.module';
     StageMappingModule,
     SyncCriteriaModule,
     ErrorLogModule,
+    CrmCardModule,
     HealthModule,
   ],
 })

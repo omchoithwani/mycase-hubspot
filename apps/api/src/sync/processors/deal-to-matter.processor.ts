@@ -99,6 +99,9 @@ export class DealToMatterProcessor extends BaseProcessor {
       : null;
 
     // 6. Compose final matter payload
+    // Amount must be configured via field mapping (HubSpot amount → custom_field:ID).
+    // Do NOT fall back to outstanding_balance — that's a different MyCase field and
+    // writing to it causes mc_to_hs to overwrite HubSpot amount on the next poll.
     const customFieldValues = extractCustomFieldValues(mapped);
     const matterData: McMatterInput = {
       name: (mapped['name'] as string) ?? props.dealname ?? 'Untitled Matter',
@@ -107,12 +110,6 @@ export class DealToMatterProcessor extends BaseProcessor {
       case_stage: mapped['case_stage'] as string | undefined,
       description: mapped['description'] as string | undefined,
       opened_date: mapped['opened_date'] as string | undefined,
-      outstanding_balance:
-        mapped['outstanding_balance'] != null
-          ? Number(mapped['outstanding_balance'])
-          : props.amount != null
-          ? Number(props.amount)
-          : undefined,
       custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined,
     };
 
