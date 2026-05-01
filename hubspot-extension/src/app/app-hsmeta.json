@@ -4,7 +4,7 @@
   "config": {
     "name": "MyCase HubSpot Sync",
     "description": "Displays linked MyCase client and case data on HubSpot Contact and Deal records.",
-    "distribution": "private",
+    "distribution": "public",
     "auth": {
       "type": "oauth",
       "redirectUrls": ["https://mycase-hubspot.fly.dev/auth/hubspot/callback"],
