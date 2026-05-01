@@ -172,13 +172,22 @@ export class MyCaseClientService {
     installationId: string,
     since?: Date,
   ): Promise<McClient[]> {
-    return this.call(installationId, (http) => {
-      const params: Record<string, string> = {};
-      if (since) {
-        params.updated_since = since.toISOString();
-      }
-      return http.get('/clients', { params }).then((r) => r.data.clients ?? r.data ?? []);
-    });
+    const results: McClient[] = [];
+    const baseParams: Record<string, unknown> = { page_size: 200 };
+    if (since) baseParams.updated_since = since.toISOString();
+
+    for (let page = 1; page <= 20; page++) {
+      const batch = await this.call(installationId, (http) =>
+        http.get('/clients', { params: { ...baseParams, page } }).then((r) => {
+          const raw = r.data;
+          return (raw?.clients ?? (Array.isArray(raw) ? raw : [])) as McClient[];
+        }),
+      );
+      results.push(...batch);
+      if (batch.length < 200) break;
+    }
+
+    return results;
   }
 
   async searchClientByEmail(
@@ -316,13 +325,22 @@ export class MyCaseClientService {
     installationId: string,
     since?: Date,
   ): Promise<McMatter[]> {
-    return this.call(installationId, (http) => {
-      const params: Record<string, string> = {};
-      if (since) {
-        params.updated_since = since.toISOString();
-      }
-      return http.get('/cases', { params }).then((r) => r.data.cases ?? r.data ?? []);
-    });
+    const results: McMatter[] = [];
+    const baseParams: Record<string, unknown> = { page_size: 200 };
+    if (since) baseParams.updated_since = since.toISOString();
+
+    for (let page = 1; page <= 20; page++) {
+      const batch = await this.call(installationId, (http) =>
+        http.get('/cases', { params: { ...baseParams, page } }).then((r) => {
+          const raw = r.data;
+          return (raw?.cases ?? (Array.isArray(raw) ? raw : [])) as McMatter[];
+        }),
+      );
+      results.push(...batch);
+      if (batch.length < 200) break;
+    }
+
+    return results;
   }
 
   async listMattersByClient(
