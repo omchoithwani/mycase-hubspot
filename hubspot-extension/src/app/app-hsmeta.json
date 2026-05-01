@@ -2,6 +2,11 @@
   "uid": "mycase-hubspot-app",
   "type": "app",
   "config": {
-    "scopes": []
+    "name": "MyCase HubSpot Sync",
+    "description": "Displays linked MyCase client and case data on HubSpot Contact and Deal records.",
+    "permittedUrls": [
+      "https://mycase-hubspot.fly.dev"
+    ],
+    "distribution": "private"
   }
 }
