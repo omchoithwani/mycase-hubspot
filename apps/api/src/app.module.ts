@@ -69,8 +69,8 @@ import { CrmCardModule } from './crm-card/crm-card.module';
             : false,
         autoLoadEntities: true,
         synchronize: false,
-        migrations: ['dist/migrations/*.js'],
-        migrationsRun: false,
+        migrations: ['packages/db/dist/migrations/*.js'],
+        migrationsRun: true,
       }),
     }),
 
