@@ -157,6 +157,22 @@ export class AuthController {
       expiresAt: tokens.expiresAt,
     });
 
+    // Fetch firm's web portal URL so CRM card links go to the right subdomain
+    try {
+      const firmWebBase = await this.mycase.getFirmWebBaseUrl(installationId);
+      if (firmWebBase) {
+        await this.installationService.updateMyCaseTokens(installationId, {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          expiresAt: tokens.expiresAt,
+          baseUrl: firmWebBase,
+        });
+        this.logger.log(`Stored MyCase web base URL: ${firmWebBase}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Non-fatal: could not fetch MyCase firm web URL: ${err.message}`);
+    }
+
     // Seed default field mappings now that both systems are connected (best effort)
     try {
       await this.fieldMapping.seedDefaults(installationId);

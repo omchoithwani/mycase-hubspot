@@ -474,4 +474,25 @@ export class MyCaseClientService {
       http.delete(`/webhooks/subscriptions/${subscriptionId}`).then(() => undefined),
     );
   }
+
+  // ── Firm ─────────────────────────────────────────────────────────────────────
+
+  async getFirmWebBaseUrl(installationId: string): Promise<string | null> {
+    try {
+      const data = await this.call(installationId, (http) =>
+        http.get('/firm').then((r) => r.data),
+      );
+      this.logger.log(`MyCase /firm response: ${JSON.stringify(data)}`);
+      // MyCase returns portal_url, web_url, or subdomain depending on API version
+      const raw: string | undefined =
+        data?.portal_url ?? data?.web_url ?? data?.url ?? data?.subdomain;
+      if (!raw) return null;
+      // If it's just a subdomain string, build the full URL
+      if (!raw.startsWith('http')) return `https://${raw}.mycase.com`;
+      return raw.replace(/\/$/, '');
+    } catch (err: any) {
+      this.logger.warn(`Could not fetch MyCase firm info: ${err.message}`);
+      return null;
+    }
+  }
 }
