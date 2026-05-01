@@ -1,17 +1,15 @@
 {
   "type": "crm-card",
-  "data": {
-    "title": "MyCase Client",
-    "uid": "mycase-contact-card",
-    "location": "crm.record.tab",
-    "objectTypes": [
-      {
-        "name": "contacts",
-        "propertiesToSend": ["email", "firstname", "lastname", "my_case_id"]
-      }
-    ],
-    "allowedUrls": [
-      "https://mycase-hubspot.fly.dev"
-    ]
-  }
+  "title": "MyCase Client",
+  "uid": "mycase-contact-card",
+  "location": "crm.record.tab",
+  "objectTypes": [
+    {
+      "name": "contacts",
+      "propertiesToSend": ["email", "firstname", "lastname", "my_case_id"]
+    }
+  ],
+  "allowedUrls": [
+    "https://mycase-hubspot.fly.dev"
+  ]
 }
