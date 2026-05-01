@@ -12,7 +12,17 @@ import { InstallationService } from '../installation/installation.service';
 import { SyncRecordService } from '../sync/sync-record.service';
 import { MyCaseClientService } from '../mycase/mycase-client.service';
 
-const MYCASE_WEB = 'https://app.mycase.com';
+const MYCASE_WEB_FALLBACK = 'https://app.mycase.com';
+
+function mycaseWebBase(baseUrl: string | null): string {
+  if (!baseUrl) return MYCASE_WEB_FALLBACK;
+  try {
+    const url = new URL(baseUrl);
+    return `${url.protocol}//${url.hostname}`;
+  } catch {
+    return MYCASE_WEB_FALLBACK;
+  }
+}
 
 @Controller('crm-cards')
 export class CrmCardController {
@@ -60,7 +70,7 @@ export class CrmCardController {
       const name =
         [client.first_name, client.last_name].filter(Boolean).join(' ') ||
         `Client #${client.id}`;
-      const profileUrl = `${MYCASE_WEB}/contacts/${client.id}`;
+      const profileUrl = `${mycaseWebBase(installation.mycaseBaseUrl)}/contacts/clients/${client.id}`;
 
       return {
         results: [
@@ -117,7 +127,7 @@ export class CrmCardController {
 
     try {
       const matter = await this.mycase.getMatter(installation.id, mycaseObjectId);
-      const caseUrl = `${MYCASE_WEB}/cases/${matter.id}`;
+      const caseUrl = `${mycaseWebBase(installation.mycaseBaseUrl)}/cases/${matter.id}`;
 
       return {
         results: [
