@@ -6,7 +6,8 @@
     "description": "Displays linked MyCase client and case data on HubSpot Contact and Deal records.",
     "distribution": "private",
     "auth": {
-      "type": "oauth",
+      "type": "static",
+      "redirectUrls": ["https://mycase-hubspot.fly.dev/auth/hubspot/callback"],
       "requiredScopes": [
         "crm.objects.contacts.read",
         "crm.objects.contacts.write",
