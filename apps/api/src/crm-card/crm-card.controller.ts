@@ -12,15 +12,14 @@ import { InstallationService } from '../installation/installation.service';
 import { SyncRecordService } from '../sync/sync-record.service';
 import { MyCaseClientService } from '../mycase/mycase-client.service';
 
-const MYCASE_WEB_FALLBACK = 'https://app.mycase.com';
+const MYCASE_API_DEFAULT = 'https://external-integrations.mycase.com/v1';
 
 function mycaseWebBase(baseUrl: string | null): string {
-  if (!baseUrl) return MYCASE_WEB_FALLBACK;
   try {
-    const url = new URL(baseUrl);
+    const url = new URL(baseUrl ?? MYCASE_API_DEFAULT);
     return `${url.protocol}//${url.hostname}`;
   } catch {
-    return MYCASE_WEB_FALLBACK;
+    return 'https://external-integrations.mycase.com';
   }
 }
 
