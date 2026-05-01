@@ -37,6 +37,13 @@ const MC_FIELDS: Record<ObjectType, HsProperty[]> = {
     { name: 'phone_numbers[0].number', label: 'Phone Number', type: 'string', fieldType: 'text', groupName: 'client' },
     { name: 'company_name', label: 'Company Name', type: 'string', fieldType: 'text', groupName: 'client' },
     { name: 'status', label: 'Status', type: 'enumeration', fieldType: 'select', groupName: 'client', options: [{ label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }] },
+    { name: 'date_of_birth', label: 'Date of Birth', type: 'date', fieldType: 'date', groupName: 'client' },
+    { name: 'address', label: 'Address', type: 'string', fieldType: 'text', groupName: 'client' },
+    { name: 'city', label: 'City', type: 'string', fieldType: 'text', groupName: 'client' },
+    { name: 'state', label: 'State', type: 'string', fieldType: 'text', groupName: 'client' },
+    { name: 'zip', label: 'Zip Code', type: 'string', fieldType: 'text', groupName: 'client' },
+    { name: 'created_at', label: 'Created At', type: 'datetime', fieldType: 'date', groupName: 'client' },
+    { name: 'updated_at', label: 'Updated At', type: 'datetime', fieldType: 'date', groupName: 'client' },
   ],
   deal: [
     { name: 'name', label: 'Case Name', type: 'string', fieldType: 'text', groupName: 'matter' },
@@ -44,13 +51,39 @@ const MC_FIELDS: Record<ObjectType, HsProperty[]> = {
     { name: 'practice_area', label: 'Practice Area', type: 'string', fieldType: 'text', groupName: 'matter' },
     { name: 'case_stage', label: 'Case Stage', type: 'string', fieldType: 'text', groupName: 'matter' },
     { name: 'close_date', label: 'Close Date', type: 'date', fieldType: 'date', groupName: 'matter' },
+    { name: 'statute_of_limitations', label: 'Statute of Limitations', type: 'date', fieldType: 'date', groupName: 'matter' },
     { name: 'rate', label: 'Rate (cents)', type: 'number', fieldType: 'number', groupName: 'matter' },
+    { name: 'billing_method', label: 'Billing Method', type: 'string', fieldType: 'text', groupName: 'matter' },
+    { name: 'description', label: 'Description', type: 'string', fieldType: 'text', groupName: 'matter' },
+    { name: 'created_at', label: 'Created At', type: 'datetime', fieldType: 'date', groupName: 'matter' },
+    { name: 'updated_at', label: 'Updated At', type: 'datetime', fieldType: 'date', groupName: 'matter' },
   ],
   note: [
     { name: 'description', label: 'Description', type: 'string', fieldType: 'textarea', groupName: 'note' },
     { name: 'date', label: 'Date', type: 'date', fieldType: 'date', groupName: 'note' },
+    { name: 'created_at', label: 'Created At', type: 'datetime', fieldType: 'date', groupName: 'note' },
+    { name: 'updated_at', label: 'Updated At', type: 'datetime', fieldType: 'date', groupName: 'note' },
   ],
 };
+
+// Maps MyCase custom field parent_type to our ObjectType
+const MC_PARENT_TYPE_MAP: Record<string, ObjectType> = {
+  Case: 'deal',
+  Contact: 'contact',
+  Client: 'contact',
+  Note: 'note',
+};
+
+// Maps MyCase field_type to HsProperty type
+function mcFieldTypeToHs(fieldType: string): { type: string; fieldType: string } {
+  switch (fieldType?.toLowerCase()) {
+    case 'date': return { type: 'date', fieldType: 'date' };
+    case 'number': case 'currency': return { type: 'number', fieldType: 'number' };
+    case 'checkbox': case 'boolean': return { type: 'bool', fieldType: 'booleancheckbox' };
+    case 'select': case 'dropdown': return { type: 'enumeration', fieldType: 'select' };
+    default: return { type: 'string', fieldType: 'text' };
+  }
+}
 
 // Operators available per field type
 const OPS_TEXT = ['EQ','NEQ','CONTAINS','NOT_CONTAINS','STARTS_WITH','ENDS_WITH','HAS_PROPERTY','NOT_HAS_PROPERTY'];
@@ -405,6 +438,7 @@ function SyncCriteriaContent() {
 
   // HubSpot properties for the field picker
   const [hsProperties, setHsProperties] = useState<HsProperty[]>([]);
+  const [mcCustomFields, setMcCustomFields] = useState<HsProperty[]>([]);
   const [loadingProps, setLoadingProps] = useState(false);
   const [propsError, setPropsError] = useState('');
 
@@ -471,13 +505,45 @@ function SyncCriteriaContent() {
 
   useEffect(() => { void fetchRules(); }, [fetchRules]);
 
-  // Re-fetch HubSpot properties when modal opens or object type changes (only for HubSpot source)
-  useEffect(() => {
-    if (showModal && modalSourceSystem === 'hubspot') void fetchProperties(modalObjectType);
-  }, [showModal, modalObjectType, modalSourceSystem, fetchProperties]);
+  const fetchMcCustomFields = useCallback(async () => {
+    if (!installationId) return;
+    try {
+      const res = await fetch(`${API}/installations/${installationId}/field-mappings/mycase-custom-fields`);
+      if (!res.ok) return;
+      const raw = (await res.json()) as Array<{ name: string; parent_type: string; field_type: string; list_options?: Array<{ key: string; option: string }> }>;
+      const mapped: HsProperty[] = raw.map((f) => {
+        const { type, fieldType } = mcFieldTypeToHs(f.field_type);
+        return {
+          name: `custom.${f.name}`,
+          label: `${f.name} (custom)`,
+          type,
+          fieldType,
+          groupName: f.parent_type,
+          options: f.list_options?.map((o) => ({ label: o.option, value: o.key })),
+        };
+      });
+      setMcCustomFields(mapped);
+    } catch { /* non-fatal */ }
+  }, [installationId]);
 
+  // Re-fetch properties when modal opens or object type / source changes
+  useEffect(() => {
+    if (!showModal) return;
+    if (modalSourceSystem === 'hubspot') {
+      void fetchProperties(modalObjectType);
+    } else {
+      void fetchMcCustomFields();
+    }
+  }, [showModal, modalObjectType, modalSourceSystem, fetchProperties, fetchMcCustomFields]);
+
+  const mcParentType = modalObjectType === 'deal' ? 'Case' : modalObjectType === 'contact' ? 'Contact' : 'Note';
   const activeProperties =
-    modalSourceSystem === 'mycase' ? (MC_FIELDS[modalObjectType] ?? []) : hsProperties;
+    modalSourceSystem === 'mycase'
+      ? [
+          ...(MC_FIELDS[modalObjectType] ?? []),
+          ...mcCustomFields.filter((f) => f.groupName === mcParentType || f.groupName === 'Client'),
+        ]
+      : hsProperties;
 
   // ── Filter group mutations ──────────────────────────────────────────────────
 
