@@ -175,7 +175,7 @@ export class CrmCardController {
     const params = new URLSearchParams(query).toString();
     const fullUrl = `${apiUrl}/crm-cards/${endpoint}${params ? '?' + params : ''}`;
     const hash = createHash('sha256')
-      .update(`${secret}GET${fullUrl}`)
+      .update(`${secret}${method}${fullUrl}`)
       .digest('base64');
 
     if (hash !== signature) {
