@@ -36,6 +36,9 @@ export class Installation {
   @Column({ name: 'mycase_base_url', type: 'varchar', length: 255, nullable: true })
   mycaseBaseUrl: string | null;
 
+  @Column({ name: 'mycase_web_base_url', type: 'varchar', length: 255, nullable: true })
+  mycaseWebBaseUrl: string | null;
+
   @Column({ name: 'mycase_connected', type: 'boolean', default: false })
   mycaseConnected: boolean;
 

@@ -71,6 +71,10 @@ export class InstallationService {
     return this.repo.save(installation);
   }
 
+  async updateMyCaseWebBaseUrl(id: string, webBaseUrl: string): Promise<void> {
+    await this.repo.update(id, { mycaseWebBaseUrl: webBaseUrl });
+  }
+
   async updateHubSpotTokens(
     id: string,
     data: {

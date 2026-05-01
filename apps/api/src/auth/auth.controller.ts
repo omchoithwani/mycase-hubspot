@@ -161,12 +161,7 @@ export class AuthController {
     try {
       const firmWebBase = await this.mycase.getFirmWebBaseUrl(installationId);
       if (firmWebBase) {
-        await this.installationService.updateMyCaseTokens(installationId, {
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
-          expiresAt: tokens.expiresAt,
-          baseUrl: firmWebBase,
-        });
+        await this.installationService.updateMyCaseWebBaseUrl(installationId, firmWebBase);
         this.logger.log(`Stored MyCase web base URL: ${firmWebBase}`);
       }
     } catch (err: any) {

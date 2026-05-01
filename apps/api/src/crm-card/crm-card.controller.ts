@@ -63,7 +63,7 @@ export class CrmCardController {
       const name =
         [client.first_name, client.last_name].filter(Boolean).join(' ') ||
         `Client #${client.id}`;
-      const profileUrl = `${mycaseWebBase(installation.mycaseBaseUrl)}/contacts/clients/${client.id}`;
+      const profileUrl = `${mycaseWebBase(installation.mycaseWebBaseUrl)}/contacts/clients/${client.id}`;
 
       return {
         results: [
@@ -120,7 +120,7 @@ export class CrmCardController {
 
     try {
       const matter = await this.mycase.getMatter(installation.id, mycaseObjectId);
-      const caseUrl = `${mycaseWebBase(installation.mycaseBaseUrl)}/cases/${matter.id}`;
+      const caseUrl = `${mycaseWebBase(installation.mycaseWebBaseUrl)}/cases/${matter.id}`;
 
       return {
         results: [
