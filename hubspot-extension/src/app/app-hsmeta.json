@@ -1,0 +1,7 @@
+{
+  "uid": "mycase-hubspot-app",
+  "type": "app",
+  "config": {
+    "scopes": []
+  }
+}
