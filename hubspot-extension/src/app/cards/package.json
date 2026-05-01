@@ -1,9 +1,8 @@
 {
-  "name": "mycase-hubspot-cards",
-  "version": "1.0.0",
-  "description": "HubSpot UI extension cards for MyCase integration",
+  "name": "cards",
+  "version": "0.0.1",
+  "private": true,
   "dependencies": {
-    "@hubspot/ui-extensions": "^1.0.0",
-    "react": "^18.0.0"
+    "@hubspot/ui-extensions": "^0.13.1"
   }
 }
