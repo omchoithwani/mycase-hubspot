@@ -30,14 +30,14 @@ export class MyCasePollerService {
   async poll(): Promise<void> {
     // Prevent overlapping runs
     if (this.isRunning) {
-      this.logger.verbose('Poll already running — skipping this tick');
+      this.logger.log('MyCase poll already running — skipping this tick');
       return;
     }
     this.isRunning = true;
 
     try {
       const installations = await this.installationService.findAllActive();
-      this.logger.debug(`Polling MyCase for ${installations.length} installation(s)`);
+      this.logger.log(`MyCase poller tick — ${installations.length} active installation(s)`);
 
       for (const installation of installations) {
         await this.pollInstallation(installation.id);
@@ -77,19 +77,17 @@ export class MyCasePollerService {
       }
 
       // Hard-filter by cursor date in case MyCase ignores updated_since.
-      // When syncHistoricalData=false the cursor starts at now, so any record
-      // whose updated_at is before that point is silently dropped.
+      // When syncHistoricalData=false the cursor starts 24h back, so only
+      // records updated in the last 24h (or since last poll) are processed.
       const filtered = records.filter((r) => {
         const recordDate = r.updated_at ?? r.created_at;
         if (!recordDate) return true; // no date → include (can't tell)
         return new Date(recordDate) >= since;
       });
 
-      if (!syncHistoricalData && filtered.length < records.length) {
-        this.logger.debug(
-          `Dropped ${records.length - filtered.length} historical ${mycaseType}(s) (updated before cursor)`,
-        );
-      }
+      this.logger.log(
+        `MyCase ${mycaseType} poll [${installationId.slice(0, 8)}]: fetched=${records.length} passed=${filtered.length} cursor=${since.toISOString()}`,
+      );
 
       for (const record of filtered) {
         const payload: SyncJobPayload = {
@@ -138,10 +136,10 @@ export class MyCasePollerService {
 
     if (!cursor) {
       // If syncHistoricalData is enabled, start from epoch to pull all records.
-      // Otherwise start from now so only new changes are picked up.
+      // Otherwise start from 24h ago so recent changes are always caught on first run.
       const lastPolledAt = syncHistoricalData
         ? new Date(0)
-        : new Date();
+        : new Date(Date.now() - 24 * 60 * 60 * 1000);
       cursor = this.cursorRepo.create({ installationId, objectType, lastPolledAt });
       cursor = await this.cursorRepo.save(cursor);
     }
