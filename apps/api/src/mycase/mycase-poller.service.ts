@@ -76,20 +76,13 @@ export class MyCasePollerService {
         records = await this.mycaseClient.listMatters(installationId, since);
       }
 
-      // Hard-filter by cursor date in case MyCase ignores updated_since.
-      // When syncHistoricalData=false the cursor starts 24h back, so only
-      // records updated in the last 24h (or since last poll) are processed.
-      const filtered = records.filter((r) => {
-        const recordDate = r.updated_at ?? r.created_at;
-        if (!recordDate) return true; // no date → include (can't tell)
-        return new Date(recordDate) >= since;
-      });
-
+      // MyCase filter[updated_after] is now used correctly — trust the API result.
+      // Log for visibility.
       this.logger.log(
-        `MyCase ${mycaseType} poll [${installationId.slice(0, 8)}]: fetched=${records.length} passed=${filtered.length} cursor=${since.toISOString()}`,
+        `MyCase ${mycaseType} poll [${installationId.slice(0, 8)}]: fetched=${records.length} cursor=${since.toISOString()}`,
       );
 
-      for (const record of filtered) {
+      for (const record of records) {
         const payload: SyncJobPayload = {
           installationId,
           direction: 'mc_to_hs',
@@ -105,9 +98,9 @@ export class MyCasePollerService {
         });
       }
 
-      if (filtered.length > 0) {
+      if (records.length > 0) {
         this.logger.log(
-          `Enqueued ${filtered.length} MyCase ${mycaseType}(s) for installation ${installationId}`,
+          `Enqueued ${records.length} MyCase ${mycaseType}(s) for installation ${installationId}`,
         );
       }
 

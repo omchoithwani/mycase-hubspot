@@ -18,11 +18,22 @@ import { McNote, McNoteInput } from './dto/note.dto';
 
 const MYCASE_BASE = 'https://external-integrations.mycase.com/v1';
 
-/**
- * Conservative rate limit: 1 req/s until MyCase documents their limit.
- * Uses a simple per-installation sliding queue.
- */
 const REQUEST_INTERVAL_MS = 1_000;
+
+/** Parse cursor token from MyCase Link header: <url?page_token=TOKEN>; rel="next" */
+function parseNextPageToken(linkHeader?: string): string | undefined {
+  if (!linkHeader) return undefined;
+  const match = linkHeader.match(/<[^>]*[?&]page_token=([^&>]+)[^>]*>;\s*rel="next"/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+export interface McWebhookSubscription {
+  id: string;
+  model: string;
+  url: string;
+  actions: string[];
+  hmac_key: string;
+}
 
 @Injectable()
 export class MyCaseClientService {
@@ -49,10 +60,9 @@ export class MyCaseClientService {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      timeout: 8_000, // 8s hard timeout — prevents worker stalls on slow/hung MyCase responses
+      timeout: 8_000,
     });
 
-    // Retry transient errors (network, 5xx) up to 3 times with exponential backoff
     axiosRetry(instance, {
       retries: 3,
       retryDelay: axiosRetry.exponentialDelay,
@@ -84,9 +94,6 @@ export class MyCaseClientService {
     return instance;
   }
 
-  /**
-   * Throttle requests to 1/s per installation.
-   */
   private async throttle(installationId: string): Promise<void> {
     const last = this.lastRequestAt.get(installationId) ?? 0;
     const wait = REQUEST_INTERVAL_MS - (Date.now() - last);
@@ -173,31 +180,29 @@ export class MyCaseClientService {
     since?: Date,
   ): Promise<McClient[]> {
     const results: McClient[] = [];
-    const baseParams: Record<string, unknown> = {
-      page_size: 200,
-      sort: 'updated_at',
-      direction: 'desc',
-    };
-    if (since) baseParams.updated_since = since.toISOString();
+    const baseParams: Record<string, unknown> = { page_size: 1000 };
+    if (since) baseParams['filter[updated_after]'] = since.toISOString();
 
-    for (let page = 1; page <= 50; page++) {
-      const batch = await this.call(installationId, (http) =>
-        http.get('/clients', { params: { ...baseParams, page } }).then((r) => {
-          const raw = r.data;
-          return (raw?.clients ?? (Array.isArray(raw) ? raw : [])) as McClient[];
-        }),
+    let pageToken: string | undefined;
+    let pages = 0;
+
+    do {
+      const params: Record<string, unknown> = { ...baseParams };
+      if (pageToken) params.page_token = pageToken;
+
+      const { clients, link } = await this.call(installationId, (http) =>
+        http.get('/clients', { params }).then((r) => ({
+          clients: (r.data?.clients ?? (Array.isArray(r.data) ? r.data : [])) as McClient[],
+          link: r.headers['link'] as string | undefined,
+        })),
       );
-      results.push(...batch);
 
-      // Early exit: if sorted desc by updated_at, stop once we reach records older than cursor
-      if (since && batch.length > 0) {
-        const oldest = batch[batch.length - 1];
-        const oldestDate = oldest.updated_at ?? oldest.created_at;
-        if (oldestDate && new Date(oldestDate) < since) break;
-      }
+      results.push(...clients);
+      pageToken = parseNextPageToken(link);
+      pages++;
 
-      if (batch.length < 200) break;
-    }
+      if (clients.length === 0 || !pageToken || pages >= 50) break;
+    } while (true);
 
     return results;
   }
@@ -205,49 +210,45 @@ export class MyCaseClientService {
   async searchClientByEmail(
     installationId: string,
     email: string,
-    maxPages = 40,
   ): Promise<McClient | null> {
     const target = email.toLowerCase();
-    const http = await this.buildClient(installationId);
+    let pageToken: string | undefined;
     let totalScanned = 0;
 
-    for (const archived of [false, true]) {
-      let page = 1;
-      while (page <= maxPages) {
-        const res = await http.get('/clients', {
-          params: { email, page, page_size: 500, archived },
-        });
-        const raw = res.data;
-        const batch: McClient[] = raw?.clients ?? (Array.isArray(raw) ? raw : []);
+    do {
+      const params: Record<string, unknown> = {
+        'filter[email]': email,
+        page_size: 1000,
+      };
+      if (pageToken) params.page_token = pageToken;
 
-        if (batch.length === 0) break;
-        totalScanned += batch.length;
+      const { clients, link } = await this.call(installationId, (http) =>
+        http.get('/clients', { params }).then((r) => ({
+          clients: (r.data?.clients ?? (Array.isArray(r.data) ? r.data : [])) as McClient[],
+          link: r.headers['link'] as string | undefined,
+        })),
+      );
 
-        const found = batch.find((c) => c.email?.toLowerCase() === target);
-        if (found) return found;
+      if (clients.length === 0) break;
+      totalScanned += clients.length;
 
-        if (batch.length < 500) break;
-        page++;
-      }
-    }
+      const found = clients.find((c) => c.email?.toLowerCase() === target);
+      if (found) return found;
+
+      pageToken = parseNextPageToken(link);
+    } while (pageToken);
 
     this.logger.warn(
-      `searchClientByEmail: "${email}" not found after scanning ${totalScanned} clients (maxPages=${maxPages})`,
+      `searchClientByEmail: "${email}" not found after scanning ${totalScanned} clients`,
     );
     return null;
   }
 
-  /**
-   * Exhaustive conflict resolver — tries every filter the MyCase API might support.
-   * Called when createClient returns 422 "email taken" but searchClientByEmail fails.
-   * Each strategy fetches a small slice and matches email client-side.
-   */
   async findClientByAnyMeans(
     installationId: string,
     email: string,
     opts: { firstName?: string; lastName?: string; phone?: string },
   ): Promise<McClient | null> {
-    const http = await this.buildClient(installationId);
     const targetEmail = email.toLowerCase();
     const targetPhone = opts.phone?.replace(/\D/g, '').slice(-10) ?? '';
 
@@ -255,42 +256,55 @@ export class MyCaseClientService {
     const matchesPhone = (c: McClient) => {
       if (!targetPhone || targetPhone.length < 7) return false;
       const n = (s?: string) => s?.replace(/\D/g, '').slice(-10) ?? '';
-      return n(c.cell_phone_number) === targetPhone;
+      return (
+        n(c.cell_phone_number) === targetPhone ||
+        n(c.work_phone_number) === targetPhone ||
+        n(c.home_phone_number) === targetPhone
+      );
     };
 
-    // Scan one batch (up to maxPages pages) using any filter params, match email client-side
-    const scanPages = async (params: Record<string, unknown>, maxPages = 3): Promise<McClient | null> => {
-      for (const archived of [false, true]) {
-        for (let page = 1; page <= maxPages; page++) {
-          const res = await http.get('/clients', { params: { ...params, page, page_size: 200, archived } });
-          const raw = res.data;
-          const batch: McClient[] = raw?.clients ?? (Array.isArray(raw) ? raw : []);
-          if (batch.length === 0) break;
-          const found = batch.find((c) => matchesEmail(c) || matchesPhone(c));
-          if (found) return found;
-          if (batch.length < 200) break;
-        }
-      }
+    const scanPages = async (params: Record<string, unknown>): Promise<McClient | null> => {
+      let pageToken: string | undefined;
+      let pages = 0;
+      do {
+        const reqParams: Record<string, unknown> = { ...params, page_size: 200 };
+        if (pageToken) reqParams.page_token = pageToken;
+
+        const { clients, link } = await this.call(installationId, (http) =>
+          http.get('/clients', { params: reqParams }).then((r) => ({
+            clients: (r.data?.clients ?? (Array.isArray(r.data) ? r.data : [])) as McClient[],
+            link: r.headers['link'] as string | undefined,
+          })),
+        );
+
+        if (clients.length === 0) break;
+        const found = clients.find((c) => matchesEmail(c) || matchesPhone(c));
+        if (found) return found;
+
+        pageToken = parseNextPageToken(link);
+        pages++;
+        if (!pageToken || pages >= 5) break;
+      } while (true);
       return null;
     };
 
     const strategies: Array<{ label: string; params: Record<string, unknown> }> = [];
 
     if (opts.firstName && opts.lastName) {
-      strategies.push({ label: 'first+last name', params: { first_name: opts.firstName, last_name: opts.lastName } });
+      strategies.push({ label: 'first+last name', params: { 'filter[first_name]': opts.firstName, 'filter[last_name]': opts.lastName } });
     }
     if (opts.lastName) {
-      strategies.push({ label: 'last name only', params: { last_name: opts.lastName } });
+      strategies.push({ label: 'last name only', params: { 'filter[last_name]': opts.lastName } });
     }
     if (opts.firstName) {
-      strategies.push({ label: 'first name only', params: { first_name: opts.firstName } });
+      strategies.push({ label: 'first name only', params: { 'filter[first_name]': opts.firstName } });
     }
     if (opts.phone) {
-      strategies.push({ label: 'phone', params: { phone: opts.phone } });
-      strategies.push({ label: 'cell_phone_number', params: { cell_phone_number: opts.phone } });
-      // Try last-10-digit form in case MyCase stores without country code
-      if (targetPhone) {
-        strategies.push({ label: 'phone (digits)', params: { phone: targetPhone } });
+      strategies.push({ label: 'cell phone', params: { 'filter[cell_phone_number]': opts.phone } });
+      strategies.push({ label: 'work phone', params: { 'filter[work_phone_number]': opts.phone } });
+      strategies.push({ label: 'home phone', params: { 'filter[home_phone_number]': opts.phone } });
+      if (targetPhone && targetPhone !== opts.phone) {
+        strategies.push({ label: 'cell phone digits', params: { 'filter[cell_phone_number]': targetPhone } });
       }
     }
 
@@ -338,31 +352,29 @@ export class MyCaseClientService {
     since?: Date,
   ): Promise<McMatter[]> {
     const results: McMatter[] = [];
-    const baseParams: Record<string, unknown> = {
-      page_size: 200,
-      sort: 'updated_at',
-      direction: 'desc',
-    };
-    if (since) baseParams.updated_since = since.toISOString();
+    const baseParams: Record<string, unknown> = { page_size: 1000 };
+    if (since) baseParams['filter[updated_after]'] = since.toISOString();
 
-    for (let page = 1; page <= 50; page++) {
-      const batch = await this.call(installationId, (http) =>
-        http.get('/cases', { params: { ...baseParams, page } }).then((r) => {
-          const raw = r.data;
-          return (raw?.cases ?? (Array.isArray(raw) ? raw : [])) as McMatter[];
-        }),
+    let pageToken: string | undefined;
+    let pages = 0;
+
+    do {
+      const params: Record<string, unknown> = { ...baseParams };
+      if (pageToken) params.page_token = pageToken;
+
+      const { matters, link } = await this.call(installationId, (http) =>
+        http.get('/cases', { params }).then((r) => ({
+          matters: (r.data?.cases ?? (Array.isArray(r.data) ? r.data : [])) as McMatter[],
+          link: r.headers['link'] as string | undefined,
+        })),
       );
-      results.push(...batch);
 
-      // Early exit: if sorted desc by updated_at, stop once we reach records older than cursor
-      if (since && batch.length > 0) {
-        const oldest = batch[batch.length - 1];
-        const oldestDate = oldest.updated_at ?? oldest.created_at;
-        if (oldestDate && new Date(oldestDate) < since) break;
-      }
+      results.push(...matters);
+      pageToken = parseNextPageToken(link);
+      pages++;
 
-      if (batch.length < 200) break;
-    }
+      if (matters.length === 0 || !pageToken || pages >= 50) break;
+    } while (true);
 
     return results;
   }
@@ -435,6 +447,31 @@ export class MyCaseClientService {
       http
         .get(`/clients/${clientId}/notes`)
         .then((r) => r.data.notes ?? r.data ?? []),
+    );
+  }
+
+  // ── Webhook Subscriptions ─────────────────────────────────────────────────────
+
+  async listWebhookSubscriptions(installationId: string): Promise<McWebhookSubscription[]> {
+    return this.call(installationId, (http) =>
+      http.get('/webhooks/subscriptions').then((r) => r.data ?? []),
+    );
+  }
+
+  async createWebhookSubscription(
+    installationId: string,
+    model: 'case' | 'client',
+    url: string,
+    actions: Array<'created' | 'updated' | 'deleted'>,
+  ): Promise<McWebhookSubscription> {
+    return this.call(installationId, (http) =>
+      http.post('/webhooks/subscriptions', { model, url, actions }).then((r) => r.data),
+    );
+  }
+
+  async deleteWebhookSubscription(installationId: string, subscriptionId: string): Promise<void> {
+    await this.call(installationId, (http) =>
+      http.delete(`/webhooks/subscriptions/${subscriptionId}`).then(() => undefined),
     );
   }
 }

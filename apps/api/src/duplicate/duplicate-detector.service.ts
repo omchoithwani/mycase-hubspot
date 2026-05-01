@@ -84,7 +84,7 @@ export class DuplicateDetectorService {
       if (opts.email) {
         // Quick 1-page check — sufficient when MyCase filters by email server-side.
         // If not found here, the 422 catch in the processor does a full scan.
-        const found = await this.mycase.searchClientByEmail(installationId, opts.email, 1);
+        const found = await this.mycase.searchClientByEmail(installationId, opts.email);
         if (found) {
           return { existingId: String(found.id), ambiguous: false, confidence: 'exact', score: 1.0 };
         }

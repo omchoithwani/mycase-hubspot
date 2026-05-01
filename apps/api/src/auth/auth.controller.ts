@@ -14,6 +14,7 @@ import { HubSpotOAuthService } from './hubspot-oauth.service';
 import { MyCaseOAuthService } from './mycase-oauth.service';
 import { InstallationService } from '../installation/installation.service';
 import { HubSpotClientService } from '../hubspot/hubspot-client.service';
+import { MyCaseClientService } from '../mycase/mycase-client.service';
 import { FieldMappingService } from '../field-mapping/field-mapping.service';
 import { StageMappingService } from '../stage-mapping/stage-mapping.service';
 
@@ -28,6 +29,7 @@ export class AuthController {
     private readonly mycaseOAuth: MyCaseOAuthService,
     private readonly installationService: InstallationService,
     private readonly hubspot: HubSpotClientService,
+    private readonly mycase: MyCaseClientService,
     private readonly fieldMapping: FieldMappingService,
     private readonly stageMapping: StageMappingService,
     private readonly config: ConfigService,
@@ -160,6 +162,23 @@ export class AuthController {
       await this.fieldMapping.seedDefaults(installationId);
     } catch (err) {
       this.logger.warn('Non-fatal: field mapping seed failed', err);
+    }
+
+    // Subscribe to MyCase webhooks so we get real-time updates (best effort)
+    try {
+      const apiUrl = this.config.get<string>('API_URL') ?? '';
+      if (apiUrl) {
+        const webhookBase = `${apiUrl}/webhooks/mycase/${installationId}`;
+        await Promise.all([
+          this.mycase.createWebhookSubscription(installationId, 'case', webhookBase, ['created', 'updated']),
+          this.mycase.createWebhookSubscription(installationId, 'client', webhookBase, ['created', 'updated']),
+        ]);
+        this.logger.log(`Subscribed MyCase webhooks for installation ${installationId}`);
+      } else {
+        this.logger.warn('API_URL not set — skipping MyCase webhook subscription');
+      }
+    } catch (err: any) {
+      this.logger.warn(`Non-fatal: MyCase webhook subscription failed: ${err.message}`);
     }
 
     const webUrl = this.config.get<string>('WEB_URL') || 'http://localhost:3000';

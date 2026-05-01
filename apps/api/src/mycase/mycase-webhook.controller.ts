@@ -2,29 +2,22 @@ import {
   Controller,
   Post,
   Body,
-  Query,
+  Param,
   Logger,
   HttpCode,
-  UnauthorizedException,
+  Headers,
+  RawBodyRequest,
+  Req,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { ConfigService } from '@nestjs/config';
+import { Request } from 'express';
 import { InstallationService } from '../installation/installation.service';
 import {
   QUEUE_MC_TO_HS,
   SYNC_JOB_OPTIONS,
 } from '../queue/queue.constants';
 import { SyncJobPayload } from '@mycase-hubspot/shared-types';
-
-interface MyCaseWebhookPayload {
-  event: string;           // 'new_case' | 'updated_contact' | 'invoice_payment'
-  object_type?: string;
-  object_id?: string;
-  contact_id?: string;
-  case_id?: string;
-  firm_id?: string;
-}
 
 @Controller('webhooks/mycase')
 export class MyCaseWebhookController {
@@ -33,46 +26,57 @@ export class MyCaseWebhookController {
   constructor(
     @InjectQueue(QUEUE_MC_TO_HS) private readonly queue: Queue<SyncJobPayload>,
     private readonly installationService: InstallationService,
-    private readonly config: ConfigService,
   ) {}
 
   /**
-   * MyCase webhook receiver.
-   * MyCase passes a shared secret as a query param for verification.
+   * MyCase webhook receiver — one endpoint per installation so we always
+   * know which installation a webhook belongs to without querying by firm_id.
+   *
+   * Subscribed via POST /v1/webhooks/subscriptions with url =
+   *   {API_URL}/webhooks/mycase/{installationId}
+   *
+   * Payload format (MyCase external integrations API):
+   *   { model: 'case' | 'client', action: 'created' | 'updated' | 'deleted', id: number, ... }
    */
-  @Post()
+  @Post(':installationId')
   @HttpCode(200)
   async receive(
-    @Body() body: MyCaseWebhookPayload,
-    @Query('secret') secret: string,
+    @Param('installationId') installationId: string,
+    @Body() body: Record<string, any>,
   ): Promise<{ ok: boolean }> {
-    // Simple shared-secret verification (MyCase doesn't use HMAC)
-    const expected = this.config.get<string>('MYCASE_WEBHOOK_SECRET');
-    if (expected && secret !== expected) {
-      throw new UnauthorizedException('Invalid MyCase webhook secret');
-    }
+    // Log raw payload on first receipt so we can verify the format
+    this.logger.log(`MyCase webhook [${installationId.slice(0, 8)}]: ${JSON.stringify(body)}`);
 
-    const { event, contact_id, case_id, firm_id } = body;
+    const model: string | undefined = body.model ?? body.object_type;
+    const action: string | undefined = body.action ?? body.event;
+    const id: string | number | undefined =
+      body.id ?? body.case_id ?? body.contact_id ?? body.object_id;
 
-    // Find installation by MyCase firm ID
-    // (firm_id must be stored on the installation — stored during MyCase OAuth)
-    if (!firm_id) {
-      this.logger.warn('MyCase webhook missing firm_id — cannot route to installation');
+    if (!id) {
+      this.logger.warn(`MyCase webhook: no id in payload — ${JSON.stringify(body)}`);
       return { ok: true };
     }
 
-    const installations = await this.installationService.findAllActive();
-    const installation = installations.find(
-      (i) => i.mycaseBaseUrl?.includes(firm_id),
-    );
-    if (!installation) {
+    // Verify installation exists and is active
+    try {
+      await this.installationService.findByIdOrFail(installationId);
+    } catch {
+      this.logger.warn(`MyCase webhook: unknown installationId ${installationId}`);
       return { ok: true };
     }
 
-    if (event === 'updated_contact' && contact_id) {
-      await this.enqueue(installation.id, 'contact', contact_id);
-    } else if (event === 'new_case' && case_id) {
-      await this.enqueue(installation.id, 'deal', case_id);
+    const sourceId = String(id);
+
+    if (model === 'case' || model === 'deal' || body.case_id) {
+      if (action !== 'deleted') {
+        await this.enqueue(installationId, 'deal', sourceId);
+      }
+    } else if (model === 'client' || model === 'contact' || body.contact_id) {
+      if (action !== 'deleted') {
+        await this.enqueue(installationId, 'contact', sourceId);
+      }
+    } else {
+      this.logger.warn(`MyCase webhook: unrecognised model="${model}" action="${action}" — skipping`);
     }
 
     return { ok: true };
@@ -97,6 +101,6 @@ export class MyCaseWebhookController {
       jobId: `mc:${installationId}:${objectType}:${sourceId}:${Date.now()}`,
     });
 
-    this.logger.debug(`Enqueued mc_to_hs ${objectType}/${sourceId}`);
+    this.logger.log(`Enqueued mc_to_hs ${objectType}/${sourceId} via webhook`);
   }
 }
