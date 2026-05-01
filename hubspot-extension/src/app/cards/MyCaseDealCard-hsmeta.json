@@ -1,0 +1,17 @@
+{
+  "type": "crm-card",
+  "data": {
+    "title": "MyCase Case",
+    "uid": "mycase-deal-card",
+    "location": "crm.record.tab",
+    "objectTypes": [
+      {
+        "name": "deals",
+        "propertiesToSend": ["dealname", "my_case_id"]
+      }
+    ],
+    "allowedUrls": [
+      "https://mycase-hubspot.fly.dev"
+    ]
+  }
+}
