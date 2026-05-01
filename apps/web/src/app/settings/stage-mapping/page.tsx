@@ -35,6 +35,7 @@ function StageMappingContent() {
   const [selectedPipeline, setSelectedPipeline] = useState('');
   const [mappings, setMappings] = useState<StageMapping[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [directionDrafts, setDirectionDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -79,13 +80,16 @@ function StageMappingContent() {
     const pipeline = pipelines.find((p) => p.id === selectedPipeline);
     if (!pipeline) return;
     const next: Record<string, string> = {};
+    const nextDir: Record<string, string> = {};
     for (const stage of pipeline.stages) {
       const existing = mappings.find(
         (m) => m.hubspotPipelineId === selectedPipeline && m.hubspotStageId === stage.id,
       );
       next[stage.id] = existing?.mycaseStatus ?? 'open';
+      nextDir[stage.id] = existing?.direction ?? 'both';
     }
     setDrafts(next);
+    setDirectionDrafts(nextDir);
   }, [selectedPipeline, pipelines, mappings]);
 
   const handleSave = async () => {
@@ -100,7 +104,7 @@ function StageMappingContent() {
         hubspotStageId: stage.id,
         hubspotStageLabel: stage.label,
         mycaseStatus: drafts[stage.id] ?? 'open',
-        direction: 'both',
+        direction: directionDrafts[stage.id] ?? 'both',
       }));
       const res = await fetch(`${API}/installations/${installationId}/stage-mappings`, {
         method: 'PUT',
@@ -237,9 +241,17 @@ function StageMappingContent() {
                     </select>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-full">
-                      Both ↔
-                    </span>
+                    <select
+                      value={directionDrafts[stage.id] ?? 'both'}
+                      onChange={(e) =>
+                        setDirectionDrafts((prev) => ({ ...prev, [stage.id]: e.target.value }))
+                      }
+                      className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="both">Both ↔</option>
+                      <option value="hs_to_mc">HubSpot → MyCase</option>
+                      <option value="mc_to_hs">MyCase → HubSpot</option>
+                    </select>
                   </td>
                 </tr>
               ))}
