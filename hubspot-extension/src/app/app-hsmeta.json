@@ -9,10 +9,6 @@
       "iframe": [],
       "img": []
     },
-    "distribution": "marketplace",
-    "scopes": [
-      "crm.objects.contacts.read",
-      "crm.objects.deals.read"
-    ]
+    "distribution": "marketplace"
   }
 }
