@@ -103,6 +103,10 @@ export class DealToMatterProcessor extends BaseProcessor {
     // Do NOT fall back to outstanding_balance — that's a different MyCase field and
     // writing to it causes mc_to_hs to overwrite HubSpot amount on the next poll.
     const customFieldValues = extractCustomFieldValues(mapped);
+    // HubSpot amount is stored as a dollar string (e.g. "1500.00").
+    // The currency_cents field mapping converts it to cents (e.g. 150000).
+    // If no mapping is configured, fall back to parsing amount directly as cents.
+    const rateRaw = mapped['rate'] ?? (props.amount ? Math.round(parseFloat(props.amount as string) * 100) : undefined);
     const matterData: McMatterInput = {
       name: (mapped['name'] as string) ?? props.dealname ?? 'Untitled Matter',
       clients: [{ id: Number(mycaseClientId) }],
@@ -110,6 +114,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       case_stage: mapped['case_stage'] as string | undefined,
       description: mapped['description'] as string | undefined,
       opened_date: mapped['opened_date'] as string | undefined,
+      rate: rateRaw != null ? Number(rateRaw) : undefined,
       custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined,
     };
 

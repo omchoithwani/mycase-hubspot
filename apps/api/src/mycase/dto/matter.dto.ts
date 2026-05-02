@@ -29,6 +29,7 @@ export interface McMatterInput {
   description?: string;
   opened_date?: string;
   sol_date?: string;
+  rate?: number;
   outstanding_balance?: number;
   clients?: Array<{ id: number }>;
   custom_field_values?: McCustomFieldValue[];
