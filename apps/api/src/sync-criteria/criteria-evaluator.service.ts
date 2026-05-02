@@ -129,6 +129,47 @@ export class CriteriaEvaluatorService {
     return active.every((r) => this.evaluateRule(r, record));
   }
 
+  /** Same as evaluateAll but returns per-rule/group/filter detail. */
+  evaluateWithDetails(rules: CriteriaRule[], record: Record<string, unknown>): {
+    passed: boolean;
+    rules: Array<{
+      ruleId: string;
+      ruleName: string | null;
+      passed: boolean;
+      groups: Array<{
+        passed: boolean;
+        filters: Array<{ field: string; operator: string; value: unknown; actualValue: unknown; passed: boolean }>;
+      }>;
+    }>;
+  } {
+    const active = rules.filter((r) => r.filterGroups.length > 0);
+    if (active.length === 0) return { passed: true, rules: [] };
+
+    const ruleResults = active.map((rule) => {
+      const groups = rule.filterGroups.map((group) => {
+        const filters = group.filters.map((f) => {
+          const actualValue = record[f.field] ?? null;
+          return {
+            field: f.field,
+            operator: f.operator,
+            value: f.value ?? null,
+            actualValue,
+            passed: this.evaluateFilter(f, record),
+          };
+        });
+        return { passed: filters.every((f) => f.passed), filters };
+      });
+      return {
+        ruleId: rule.id,
+        ruleName: rule.ruleName,
+        passed: groups.some((g) => g.passed),
+        groups,
+      };
+    });
+
+    return { passed: ruleResults.every((r) => r.passed), rules: ruleResults };
+  }
+
   /** All filters within a group must pass (AND within group). */
   private evaluateGroup(group: SyncFilterGroup, record: Record<string, unknown>): boolean {
     if (group.filters.length === 0) return true;

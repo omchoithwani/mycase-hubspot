@@ -87,6 +87,26 @@ export class SyncCriteriaService {
     );
   }
 
+  async evaluateDetails(
+    installationId: string,
+    objectType: string,
+    sourceSystem: SourceSystem,
+    record: Record<string, unknown>,
+  ) {
+    const rules = await this.repo.find({
+      where: { installationId, objectType, sourceSystem, isActive: true },
+    });
+    if (rules.length === 0) return { passed: true, rules: [] };
+    return this.evaluator.evaluateWithDetails(
+      rules.map((r) => ({
+        id: r.id,
+        ruleName: r.ruleName,
+        filterGroups: r.conditions as any,
+      })),
+      record,
+    );
+  }
+
   async testRule(
     id: string,
     installationId: string,

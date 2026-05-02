@@ -179,13 +179,13 @@ export class SyncCriteriaController {
       properties = deal.properties as Record<string, unknown>;
     }
 
-    const passed = await this.service.evaluate(
+    const detail = await this.service.evaluateDetails(
       installationId,
       objectType,
       sourceSystem,
       properties,
     );
 
-    return { passed, recordId: foundId, properties };
+    return { passed: detail.passed, recordId: foundId, properties, detail };
   }
 }

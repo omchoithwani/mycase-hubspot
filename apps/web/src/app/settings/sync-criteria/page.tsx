@@ -455,9 +455,14 @@ function SyncCriteriaContent() {
   // Test panel
   const [testMode, setTestMode] = useState<'email' | 'id'>('email');
   const [testInput, setTestInput] = useState('');
+  type FilterDetail = { field: string; operator: string; value: unknown; actualValue: unknown; passed: boolean };
+  type GroupDetail = { passed: boolean; filters: FilterDetail[] };
+  type RuleDetail = { ruleId: string; ruleName: string | null; passed: boolean; groups: GroupDetail[] };
+
   const [testResult, setTestResult] = useState<{
     passed: boolean;
     recordId: string;
+    detail?: { passed: boolean; rules: RuleDetail[] };
     properties: Record<string, unknown>;
   } | null>(null);
   const [testError, setTestError] = useState('');
@@ -698,7 +703,7 @@ function SyncCriteriaContent() {
         setTestError(msg);
         return;
       }
-      setTestResult((await res.json()) as { passed: boolean; recordId: string; properties: Record<string, unknown> });
+      setTestResult((await res.json()) as { passed: boolean; recordId: string; properties: Record<string, unknown>; detail?: { passed: boolean; rules: RuleDetail[] } });
     } catch (e: unknown) {
       setTestError(e instanceof Error ? e.message : 'Request failed');
     } finally {
@@ -923,6 +928,50 @@ function SyncCriteriaContent() {
                   <span>{testResult.passed ? 'PASS — this record would sync' : 'FAIL — this record would be skipped'}</span>
                   <span className="ml-auto text-xs font-normal opacity-70">ID: {testResult.recordId}</span>
                 </div>
+
+                {/* Criteria breakdown — always shown */}
+                {testResult.detail && testResult.detail.rules.length > 0 && (
+                  <div className="space-y-2">
+                    {testResult.detail.rules.map((rule) => (
+                      <div key={rule.ruleId} className={`border rounded-xl overflow-hidden ${rule.passed ? 'border-green-200' : 'border-red-200'}`}>
+                        <div className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold ${rule.passed ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>
+                          <span className="material-symbols-outlined text-[14px]">{rule.passed ? 'check_circle' : 'cancel'}</span>
+                          {rule.ruleName ?? `Rule ${rule.ruleId.slice(0, 8)}`}
+                        </div>
+                        <div className="divide-y divide-slate-100">
+                          {rule.groups.map((group, gi) => (
+                            <div key={gi} className="px-4 py-2.5 bg-white">
+                              {rule.groups.length > 1 && (
+                                <p className="text-[10px] font-bold text-[#fd7958] uppercase tracking-wider mb-1.5">
+                                  {gi > 0 ? 'OR — ' : ''}Group {gi + 1} {group.passed ? '✓' : '✗'}
+                                </p>
+                              )}
+                              <div className="space-y-1.5">
+                                {group.filters.map((f, fi) => (
+                                  <div key={fi} className={`flex items-start gap-2 text-xs rounded-lg px-2.5 py-1.5 ${f.passed ? 'bg-green-50' : 'bg-red-50'}`}>
+                                    <span className={`material-symbols-outlined text-[14px] flex-shrink-0 mt-0.5 ${f.passed ? 'text-green-600' : 'text-red-500'}`}>
+                                      {f.passed ? 'check' : 'close'}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <span className="font-mono font-semibold text-slate-700">{f.field}</span>
+                                      {' '}<span className="text-slate-500">{f.operator}</span>
+                                      {f.value != null && <span className="text-blue-600 font-mono"> {Array.isArray(f.value) ? (f.value as unknown[]).join(', ') : String(f.value)}</span>}
+                                      {!f.passed && (
+                                        <span className="ml-2 text-red-600">
+                                          (actual: <span className="font-mono">{f.actualValue != null ? String(f.actualValue) : <em>empty</em>}</span>)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {testResult.passed && (
                   <div className="flex items-center gap-3">
