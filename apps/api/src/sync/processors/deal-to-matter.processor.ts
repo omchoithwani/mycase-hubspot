@@ -162,7 +162,10 @@ export class DealToMatterProcessor extends BaseProcessor {
       action = 'created';
       this.logger.log(`Created MyCase matter ${mycaseId} from HubSpot deal ${sourceId}`);
     } else {
-      await this.mycase.updateMatter(installationId, mycaseId, matterData);
+      // Strip custom_field_values from updates — MyCase PUT appends rather than
+      // replaces them, causing duplicates on every sync run.
+      const { custom_field_values: _cfv, ...updateData } = matterData;
+      await this.mycase.updateMatter(installationId, mycaseId, updateData);
       action = 'updated';
     }
 
