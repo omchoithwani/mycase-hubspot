@@ -106,6 +106,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       : null;
 
     // 6. Compose final matter payload
+    this.logger.log(`Deal ${sourceId} mapped fields: ${JSON.stringify(mapped)}`);
     // Amount must be configured via field mapping (HubSpot amount → custom_field:ID).
     // Do NOT fall back to outstanding_balance — that's a different MyCase field and
     // writing to it causes mc_to_hs to overwrite HubSpot amount on the next poll.
@@ -125,6 +126,8 @@ export class DealToMatterProcessor extends BaseProcessor {
       rate: rateRaw != null ? Number(rateRaw) : undefined,
       custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined,
     };
+
+    this.logger.log(`Deal ${sourceId} matterData: ${JSON.stringify(matterData)}`);
 
     // 7. Change detection
     const existing = await this.syncRecords.findByHubSpotId(
