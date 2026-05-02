@@ -89,12 +89,19 @@ export class DealToMatterProcessor extends BaseProcessor {
       { ...props as Record<string, unknown>, hs_object_id: deal.id },
     );
 
-    // 5. Resolve deal stage → MyCase status
+    // 5. Resolve deal stage → MyCase status + stage label
     const mycaseStatus = props.dealstage && props.pipeline
       ? await this.stageMapping.toMyCaseStatus(
           installationId,
-          props.pipeline,
-          props.dealstage,
+          props.pipeline as string,
+          props.dealstage as string,
+        )
+      : null;
+    const stageLabel = props.dealstage && props.pipeline
+      ? await this.stageMapping.toStageLabel(
+          installationId,
+          props.pipeline as string,
+          props.dealstage as string,
         )
       : null;
 
@@ -111,7 +118,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       name: (mapped['name'] as string) ?? props.dealname ?? 'Untitled Matter',
       clients: [{ id: Number(mycaseClientId) }],
       status: (mycaseStatus ?? 'open').toLowerCase() as 'open' | 'closed',
-      case_stage: mapped['case_stage'] as string | undefined,
+      case_stage: (mapped['case_stage'] as string | undefined) ?? stageLabel ?? undefined,
       practice_area: mapped['practice_area'] as string | undefined,
       description: mapped['description'] as string | undefined,
       opened_date: mapped['opened_date'] as string | undefined,

@@ -87,6 +87,17 @@ export class StageMappingService {
     return mapping?.mycaseStatus ?? null;
   }
 
+  async toStageLabel(
+    installationId: string,
+    pipelineId: string,
+    stageId: string,
+  ): Promise<string | null> {
+    const mapping = await this.repo.findOne({
+      where: { installationId, hubspotPipelineId: pipelineId, hubspotStageId: stageId },
+    });
+    return mapping?.hubspotStageLabel ?? null;
+  }
+
   async toHubSpotStage(
     installationId: string,
     mycaseStatus: string,
