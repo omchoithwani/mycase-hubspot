@@ -112,6 +112,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       clients: [{ id: Number(mycaseClientId) }],
       status: (mycaseStatus ?? 'open').toLowerCase() as 'open' | 'closed',
       case_stage: mapped['case_stage'] as string | undefined,
+      practice_area: mapped['practice_area'] as string | undefined,
       description: mapped['description'] as string | undefined,
       opened_date: mapped['opened_date'] as string | undefined,
       rate: rateRaw != null ? Number(rateRaw) : undefined,
