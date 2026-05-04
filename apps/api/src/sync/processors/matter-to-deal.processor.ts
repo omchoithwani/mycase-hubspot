@@ -99,14 +99,25 @@ export class MatterToDealProcessor extends BaseProcessor {
     );
 
     const dealData: HsDealInput = {
+      // Spread all configured field mappings so any mapped property lands in HubSpot
+      ...(mapped as Record<string, string | undefined>),
+      // Core fields (override mapped values with computed ones where needed)
       dealname: (mapped['dealname'] as string) ?? matter.name,
       my_case_id: sourceId,
       closedate:
         (mapped['closedate'] as string) ??
         (matter.sol_date ? String(new Date(matter.sol_date).getTime()) : undefined),
       amount,
+      // Standard MyCase fields — use mapped value if a mapping exists, else fall back directly
+      practice_area: (mapped['practice_area'] as string) ?? matter.practice_area ?? undefined,
+      case_stage: (mapped['case_stage'] as string) ?? matter.case_stage ?? undefined,
+      // Stage mapping only on create
       ...(hsStage ? { dealstage: hsStage.stageId, pipeline: hsStage.pipelineId } : {}),
     };
+
+    this.logger.log(
+      `matter-to-deal [${sourceId}]: dealData practice_area="${dealData.practice_area}" case_stage="${dealData.case_stage}" dealname="${dealData.dealname}"`,
+    );
 
     // 8. Change detection
     if (existing && this.syncRecords.isSamePayload(existing, dealData as any)) {
