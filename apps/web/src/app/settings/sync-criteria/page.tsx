@@ -973,8 +973,7 @@ function SyncCriteriaContent() {
                   </div>
                 )}
 
-                {objectType !== 'note' && (
-                  <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
                     {testResult.passed && (
                       <button
                         onClick={() => void handleSyncNow(false)}
@@ -1001,7 +1000,6 @@ function SyncCriteriaContent() {
                       <span className="text-xs text-slate-500">Job enqueued — check Sync History to track progress.</span>
                     )}
                   </div>
-                )}
 
                 {/* Properties preview */}
                 <details className="border border-slate-200 rounded-xl overflow-hidden">
