@@ -101,10 +101,12 @@ export class MatterToDealProcessor extends BaseProcessor {
       `matter-to-deal [${sourceId}]: name="${matter.name}" mapped_amount=${mapped['amount']} → amount=${amount}`,
     );
 
-    // Helper: include a field only if it has a mapped value OR is not locked to HubSpot
+    // Helper: include a field only if it has a mapped value OR is not locked to HubSpot.
+    // On initial creation, always copy the field regardless of source-of-truth setting —
+    // the source-of-truth only applies to subsequent updates.
     const field = (name: string, mappedVal: unknown, fallback: unknown): string | undefined => {
       if (mappedVal != null) return String(mappedVal);
-      if (lockedFields.has(name)) return undefined; // HubSpot is source of truth — don't overwrite
+      if (!isCreate && lockedFields.has(name)) return undefined; // Update: HubSpot owns this — skip
       return fallback != null ? String(fallback) : undefined;
     };
 

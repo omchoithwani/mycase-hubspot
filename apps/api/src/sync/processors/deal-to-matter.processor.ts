@@ -110,13 +110,23 @@ export class DealToMatterProcessor extends BaseProcessor {
         )
       : null;
 
-    // 6. Compose final matter payload
+    // 6. Look up existing sync record first so we know create vs update
+    const existing = await this.syncRecords.findByHubSpotId(
+      installationId,
+      'deal',
+      sourceId,
+    );
+    const isCreate = !existing?.mycaseObjectId;
+
+    // 7. Compose final matter payload
     this.logger.log(`Deal ${sourceId} mapped fields: ${JSON.stringify(mapped)}`);
 
-    // Helper: include a field only if it has a mapped value OR is not locked to MyCase
+    // Helper: include a field only if it has a mapped value OR is not locked to MyCase.
+    // On initial creation, always copy the field regardless of source-of-truth setting —
+    // the source-of-truth only applies to subsequent updates.
     const field = (name: string, mappedVal: unknown, fallback: unknown): unknown => {
       if (mappedVal != null) return mappedVal;
-      if (lockedFields.has(name)) return undefined; // MyCase is source of truth — don't overwrite
+      if (!isCreate && lockedFields.has(name)) return undefined; // Update: MyCase owns this — skip
       return fallback ?? undefined;
     };
 
@@ -136,17 +146,12 @@ export class DealToMatterProcessor extends BaseProcessor {
 
     this.logger.log(`Deal ${sourceId} matterData: ${JSON.stringify(matterData)}`);
 
-    // 7. Change detection
-    const existing = await this.syncRecords.findByHubSpotId(
-      installationId,
-      'deal',
-      sourceId,
-    );
+    // 8. Change detection
     if (existing && this.syncRecords.isSamePayload(existing, matterData as any)) {
       return this.skip('Payload unchanged since last sync');
     }
 
-    // 8. Duplicate detection (create path only)
+    // 9. Duplicate detection (create path only)
     let mycaseId = existing?.mycaseObjectId;
     let action: 'created' | 'updated';
 
