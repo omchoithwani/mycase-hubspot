@@ -12,6 +12,7 @@ interface ErrorLog {
   sourceId: string;
   errorCode: string;
   errorMessage: string;
+  rawResponse?: Record<string, unknown> | null;
   resolved: boolean;
   retryCount: number;
   createdAt: string;
@@ -44,6 +45,14 @@ function ErrorsContent() {
   const [filterResolved, setFilterResolved] = useState('false');
 
   const [actionStates, setActionStates] = useState<Record<string, 'loading' | 'done' | null>>({});
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) =>
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   const fetchLogs = useCallback(async () => {
     if (!installationId) return;
@@ -175,6 +184,7 @@ function ErrorsContent() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-500 uppercase tracking-wide">
+                  <th className="px-4 py-3 text-left w-6"></th>
                   <th className="px-4 py-3 text-left">Error Code</th>
                   <th className="px-4 py-3 text-left">Object</th>
                   <th className="px-4 py-3 text-left">Direction</th>
@@ -188,67 +198,105 @@ function ErrorsContent() {
               <tbody className="divide-y divide-slate-100">
                 {logs.map((log) => {
                   const state = actionStates[log.id];
+                  const isExpanded = expandedRows.has(log.id);
+                  const hasDetail = !!(log.rawResponse || log.errorMessage?.length > 80);
                   return (
-                    <tr
-                      key={log.id}
-                      className={`hover:bg-slate-50 transition-colors ${log.resolved ? 'opacity-50' : ''}`}
-                    >
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded">
-                          {log.errorCode}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 capitalize text-slate-700">{log.objectType}</td>
-                      <td className="px-4 py-3 text-xs text-slate-500">{formatDirection(log.direction)}</td>
-                      <td
-                        className="px-4 py-3 font-mono text-xs text-slate-600"
-                        title={log.sourceId}
+                    <>
+                      <tr
+                        key={log.id}
+                        className={`hover:bg-slate-50 transition-colors ${log.resolved ? 'opacity-50' : ''}`}
                       >
-                        {truncateId(log.sourceId)}
-                      </td>
-                      <td
-                        className="px-4 py-3 text-sm text-slate-700 max-w-xs truncate"
-                        title={log.errorMessage}
-                      >
-                        {log.errorMessage}
-                      </td>
-                      <td className="px-4 py-3 text-center text-xs text-slate-600">{log.retryCount}</td>
-                      <td className="px-4 py-3 text-xs text-slate-500">
-                        {new Date(log.createdAt).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3">
-                        {state === 'loading' ? (
-                          <span className="material-symbols-outlined text-[18px] text-slate-400 animate-spin">
-                            autorenew
-                          </span>
-                        ) : state === 'done' ? (
-                          <span className="text-xs text-green-600 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                            Done
-                          </span>
-                        ) : log.resolved ? (
-                          <span className="text-xs text-green-600 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                            Resolved
-                          </span>
-                        ) : (
-                          <div className="flex gap-2">
+                        <td className="px-2 py-3 text-center">
+                          {hasDetail && (
                             <button
-                              onClick={() => void handleAction(log.id, 'retry')}
-                              className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                              onClick={() => toggleExpand(log.id)}
+                              className="text-slate-400 hover:text-slate-600 transition-colors"
+                              title={isExpanded ? 'Hide details' : 'Show details'}
                             >
-                              Retry
+                              <span className="material-symbols-outlined text-[16px]">
+                                {isExpanded ? 'expand_less' : 'expand_more'}
+                              </span>
                             </button>
-                            <button
-                              onClick={() => void handleAction(log.id, 'resolve')}
-                              className="text-xs text-slate-500 hover:text-slate-700 hover:underline"
-                            >
-                              Resolve
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded">
+                            {log.errorCode}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 capitalize text-slate-700">{log.objectType}</td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{formatDirection(log.direction)}</td>
+                        <td
+                          className="px-4 py-3 font-mono text-xs text-slate-600"
+                          title={log.sourceId}
+                        >
+                          {truncateId(log.sourceId)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-700 max-w-xs">
+                          <span className={isExpanded ? '' : 'line-clamp-2'}>
+                            {log.errorMessage}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center text-xs text-slate-600">{log.retryCount}</td>
+                        <td className="px-4 py-3 text-xs text-slate-500">
+                          {new Date(log.createdAt).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3">
+                          {state === 'loading' ? (
+                            <span className="material-symbols-outlined text-[18px] text-slate-400 animate-spin">
+                              autorenew
+                            </span>
+                          ) : state === 'done' ? (
+                            <span className="text-xs text-green-600 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                              Done
+                            </span>
+                          ) : log.resolved ? (
+                            <span className="text-xs text-green-600 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                              Resolved
+                            </span>
+                          ) : (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => void handleAction(log.id, 'retry')}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                              >
+                                Retry
+                              </button>
+                              <button
+                                onClick={() => void handleAction(log.id, 'resolve')}
+                                className="text-xs text-slate-500 hover:text-slate-700 hover:underline"
+                              >
+                                Resolve
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr key={`${log.id}-detail`} className="bg-slate-50">
+                          <td colSpan={9} className="px-6 py-4">
+                            <div className="space-y-3">
+                              <div>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Full error message</p>
+                                <p className="text-sm text-slate-800 font-mono whitespace-pre-wrap break-all bg-white border border-slate-200 rounded-lg px-3 py-2">
+                                  {log.errorMessage}
+                                </p>
+                              </div>
+                              {log.rawResponse && (
+                                <div>
+                                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">API response body</p>
+                                  <pre className="text-xs text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all">
+                                    {JSON.stringify(log.rawResponse, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   );
                 })}
               </tbody>

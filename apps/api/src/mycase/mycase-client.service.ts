@@ -122,13 +122,23 @@ export class MyCaseClientService {
           `MyCase resource not found: ${axiosErr.config?.baseURL}${axiosErr.config?.url}`,
         );
       }
-      if (axiosErr.response?.status === 422) {
-        this.logger.error(
-          `MyCase 422 — URL: ${axiosErr.config?.baseURL}${axiosErr.config?.url} — request: ${axiosErr.config?.data} — response: ${JSON.stringify(axiosErr.response?.data)}`,
-        );
-      }
       if (axiosErr.response?.status === 401) {
         throw new UnauthorizedException('MyCase authentication failed');
+      }
+      // For any other HTTP error, embed the response body so it reaches error_logs
+      if (axiosErr.response?.data) {
+        const status = axiosErr.response.status;
+        const body = axiosErr.response.data;
+        const detail = typeof body === 'string' ? body : JSON.stringify(body);
+        this.logger.error(
+          `MyCase ${status} — ${axiosErr.config?.baseURL}${axiosErr.config?.url} — ${detail}`,
+        );
+        const enriched: any = new Error(
+          `MyCase ${status}: ${axiosErr.config?.method?.toUpperCase()} ${axiosErr.config?.url} — ${detail}`,
+        );
+        enriched.statusCode = status;
+        enriched.responseData = body;
+        throw enriched;
       }
       throw err;
     }

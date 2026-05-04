@@ -77,6 +77,18 @@ export class HubSpotClientService {
           `HubSpot resource not found: ${axiosErr.config?.url}`,
         );
       }
+      // For any non-429/404 HTTP error, embed the response body so it reaches error_logs
+      if (axiosErr.response?.data) {
+        const status = axiosErr.response.status;
+        const body = axiosErr.response.data;
+        const detail = typeof body === 'string' ? body : JSON.stringify(body);
+        const enriched: any = new Error(
+          `HubSpot ${status}: ${axiosErr.config?.method?.toUpperCase()} ${axiosErr.config?.url} — ${detail}`,
+        );
+        enriched.statusCode = status;
+        enriched.responseData = body;
+        throw enriched;
+      }
       throw err;
     }
   }

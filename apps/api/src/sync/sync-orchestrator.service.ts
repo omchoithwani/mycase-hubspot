@@ -130,14 +130,19 @@ export class SyncOrchestrator {
       await this.syncJobService.markFailed(dbJob.id, msg);
 
       if (isFinalAttempt) {
+        const responseData = (err as any)?.responseData;
+        const rawResponse: Record<string, unknown> | null = responseData
+          ? (typeof responseData === 'object' ? responseData : { message: String(responseData) })
+          : null;
         await this.errorLogService.log({
           installationId,
           syncJobId: dbJob.id,
           objectType,
           direction,
           sourceId,
-          errorCode: 'EXCEPTION',
+          errorCode: (err as any)?.statusCode ? `HTTP_${(err as any).statusCode}` : 'EXCEPTION',
           errorMessage: msg,
+          rawResponse: rawResponse ?? undefined,
         });
       }
 
