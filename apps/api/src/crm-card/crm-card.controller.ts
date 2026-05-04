@@ -1,9 +1,7 @@
 import {
   Controller,
   Get,
-  Post,
   Query,
-  Body,
   Headers,
   Logger,
   HttpCode,
@@ -158,22 +156,26 @@ export class CrmCardController {
 
   /**
    * Triggered by card buttons — enqueues a HubSpot→MyCase sync for the record.
-   * POST /crm-cards/sync
-   * Body: { portalId, objectId, objectType: 'contact'|'deal', force?: boolean }
+   * GET /crm-cards/sync?portalId=&objectId=&objectType=contact|deal&force=true|false
+   * hubspot.fetch() only supports GET, so sync is triggered via query params.
    */
-  @Post('sync')
+  @Get('sync')
   @HttpCode(200)
   async syncRecord(
-    @Body() body: { portalId: string; objectId: string; objectType: 'contact' | 'deal'; force?: boolean },
+    @Query('portalId') portalId: string,
+    @Query('objectId') objectId: string,
+    @Query('objectType') objectType: 'contact' | 'deal',
+    @Query('force') forceStr: string | undefined,
   ) {
-    const installation = await this.findInstallation(body.portalId);
+    const force = forceStr === 'true';
+    const installation = await this.findInstallation(portalId);
     if (!installation) return { queued: false, error: 'Installation not found' };
     await this.initialSync.triggerSingleRecord(
       installation.id,
-      body.objectType,
-      body.objectId,
+      objectType,
+      objectId,
       'hs_to_mc',
-      body.force ?? false,
+      force,
     );
     return { queued: true };
   }

@@ -57,12 +57,14 @@ const MyCaseDealCard = ({ context }) => {
   const triggerSync = (force) => {
     setSyncing(true);
     setSyncMessage(null);
+    const params = new URLSearchParams({
+      portalId: String(portalId),
+      objectId: dealId,
+      objectType: 'deal',
+      force: String(force),
+    });
     hubspot
-      .fetch(`${API_BASE}/crm-cards/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ portalId, objectId: dealId, objectType: 'deal', force }),
-      })
+      .fetch(`${API_BASE}/crm-cards/sync?${params.toString()}`)
       .then((res) => res.json())
       .then((data) => {
         setSyncMessage(data.queued ? 'Sync queued — refresh in a moment.' : (data.error || 'Failed to queue sync'));
