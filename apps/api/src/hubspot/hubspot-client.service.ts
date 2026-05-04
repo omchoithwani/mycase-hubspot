@@ -289,9 +289,11 @@ export class HubSpotClientService {
     dealId: string,
     contactId: string,
   ): Promise<void> {
+    // v4 associations API — v3 is deprecated and disabled on some portals
     await this.call(portalId, installationId, (http) =>
       http.put(
-        `/crm/v3/objects/deals/${dealId}/associations/contacts/${contactId}/deal_to_contact`,
+        `/crm/v4/objects/deals/${dealId}/associations/contacts/${contactId}`,
+        [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }],
       ),
     );
   }

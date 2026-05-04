@@ -176,23 +176,6 @@ export class MatterToDealProcessor extends BaseProcessor {
       );
       hubspotId = created.id;
       action = 'created';
-
-      // Associate deal with HubSpot contact (best effort)
-      if (contactRecord) {
-        try {
-          await this.hubspot.associateDealWithContact(
-            installation.hubspotPortalId,
-            installationId,
-            hubspotId,
-            contactRecord.hubspotObjectId,
-          );
-        } catch {
-          this.logger.warn(
-            `Could not associate deal ${hubspotId} with contact ${contactRecord.hubspotObjectId}`,
-          );
-        }
-      }
-
       this.logger.log(`Created HubSpot deal ${hubspotId} from MyCase matter ${sourceId}`);
     } else {
       await this.hubspot.updateDeal(
@@ -202,6 +185,27 @@ export class MatterToDealProcessor extends BaseProcessor {
         dealData,
       );
       action = 'updated';
+    }
+
+    // Associate deal with HubSpot contact on every sync run — idempotent, repairs
+    // failed associations from previous runs (e.g. contact wasn't synced yet).
+    if (contactRecord) {
+      try {
+        await this.hubspot.associateDealWithContact(
+          installation.hubspotPortalId,
+          installationId,
+          hubspotId,
+          contactRecord.hubspotObjectId,
+        );
+      } catch (err: any) {
+        this.logger.warn(
+          `Could not associate deal ${hubspotId} with contact ${contactRecord.hubspotObjectId}: ${err?.message ?? err}`,
+        );
+      }
+    } else {
+      this.logger.warn(
+        `matter-to-deal [${sourceId}]: no linked HubSpot contact found — deal ${hubspotId} left unassociated`,
+      );
     }
 
     // 9. Upsert sync record
