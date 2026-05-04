@@ -66,12 +66,15 @@ export class MatterToDealProcessor extends BaseProcessor {
     );
 
     // 5. Apply configured field mapping (custom fields now available as custom_field:ID)
-    const mapped = await this.fieldMapping.applyMapping(
-      installationId,
-      'deal',
-      'mc_to_hs',
-      { ...(matter as unknown as Record<string, unknown>), ...customFlat },
-    );
+    const [mapped, lockedFields] = await Promise.all([
+      this.fieldMapping.applyMapping(
+        installationId,
+        'deal',
+        'mc_to_hs',
+        { ...(matter as unknown as Record<string, unknown>), ...customFlat },
+      ),
+      this.fieldMapping.getSourceOfTruthLockedFields(installationId, 'deal', 'mc_to_hs'),
+    ]);
 
     // 6. Check for existing sync record first so we know if this is create or update
     const existing = await this.syncRecords.findByMyCaseId(
@@ -98,19 +101,29 @@ export class MatterToDealProcessor extends BaseProcessor {
       `matter-to-deal [${sourceId}]: name="${matter.name}" mapped_amount=${mapped['amount']} → amount=${amount}`,
     );
 
+    // Helper: include a field only if it has a mapped value OR is not locked to HubSpot
+    const field = (name: string, mappedVal: unknown, fallback: unknown): string | undefined => {
+      if (mappedVal != null) return String(mappedVal);
+      if (lockedFields.has(name)) return undefined; // HubSpot is source of truth — don't overwrite
+      return fallback != null ? String(fallback) : undefined;
+    };
+
     const dealData: HsDealInput = {
-      // Spread all configured field mappings so any mapped property lands in HubSpot
-      ...(mapped as Record<string, string | undefined>),
-      // Core fields (override mapped values with computed ones where needed)
-      dealname: (mapped['dealname'] as string) ?? matter.name,
+      // Spread all configured field mappings (non-null only)
+      ...(Object.fromEntries(
+        Object.entries(mapped).filter(([, v]) => v != null),
+      ) as Record<string, string | undefined>),
+      // Core fields with source-of-truth awareness
+      dealname: field('dealname', mapped['dealname'], matter.name),
       my_case_id: sourceId,
-      closedate:
-        (mapped['closedate'] as string) ??
-        (matter.sol_date ? String(new Date(matter.sol_date).getTime()) : undefined),
+      closedate: field(
+        'closedate',
+        mapped['closedate'],
+        matter.sol_date ? String(new Date(matter.sol_date).getTime()) : undefined,
+      ),
       amount,
-      // Standard MyCase fields — use mapped value if a mapping exists, else fall back directly
-      practice_area: (mapped['practice_area'] as string) ?? matter.practice_area ?? undefined,
-      case_stage: (mapped['case_stage'] as string) ?? matter.case_stage ?? undefined,
+      practice_area: field('practice_area', mapped['practice_area'], matter.practice_area),
+      case_stage: field('case_stage', mapped['case_stage'], matter.case_stage),
       // Stage mapping only on create
       ...(hsStage ? { dealstage: hsStage.stageId, pipeline: hsStage.pipelineId } : {}),
     };

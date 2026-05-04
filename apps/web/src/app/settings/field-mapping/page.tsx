@@ -36,9 +36,15 @@ const MC_FIELDS: Record<ObjectType, string[]> = {
 };
 
 const DIRECTION_LABELS: Record<Direction, string> = {
-  both: 'Both ↔',
-  hs_to_mc: 'HubSpot → MyCase',
-  mc_to_hs: 'MyCase → HubSpot',
+  both: 'Sync both ways',
+  hs_to_mc: 'HubSpot is source of truth',
+  mc_to_hs: 'MyCase is source of truth',
+};
+
+const DIRECTION_DESCRIPTION: Record<Direction, string> = {
+  both: 'Changes in either system sync to the other (last write wins)',
+  hs_to_mc: 'HubSpot value is always written to MyCase; MyCase changes to this field are ignored',
+  mc_to_hs: 'MyCase value is always written to HubSpot; HubSpot changes to this field are ignored',
 };
 
 const TRANSFORM_LABELS: Record<TransformType, string> = {
@@ -386,7 +392,7 @@ function FieldMappingContent() {
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-500 uppercase tracking-wide">
                 <th className="px-4 py-3 text-left">HubSpot Field</th>
                 <th className="px-4 py-3 text-left">MyCase Field</th>
-                <th className="px-4 py-3 text-left">Direction</th>
+                <th className="px-4 py-3 text-left">Source of Truth</th>
                 <th className="px-4 py-3 text-left">Transform</th>
                 <th className="px-4 py-3 text-left">Actions</th>
               </tr>
@@ -475,7 +481,7 @@ function FieldMappingContent() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1.5">Direction</label>
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">Source of Truth</label>
                 <select
                   value={form.direction}
                   onChange={(e) => setForm({ ...form, direction: e.target.value as Direction })}
@@ -485,6 +491,9 @@ function FieldMappingContent() {
                     <option key={d} value={d}>{DIRECTION_LABELS[d]}</option>
                   ))}
                 </select>
+                {form.direction && (
+                  <p className="mt-1.5 text-xs text-slate-500">{DIRECTION_DESCRIPTION[form.direction]}</p>
+                )}
               </div>
 
               <div>

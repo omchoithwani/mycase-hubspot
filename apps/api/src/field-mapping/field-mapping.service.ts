@@ -110,6 +110,35 @@ export class FieldMappingService {
     }
   }
 
+  // ── Source of truth helpers ───────────────────────────────────────────────
+
+  /**
+   * Returns the set of destination field names that are locked to the opposite
+   * system (i.e. mapped exclusively in the opposite direction).
+   *
+   * For currentDirection = 'mc_to_hs': returns HubSpot field names mapped ONLY as 'hs_to_mc'
+   *   → processors must NOT overwrite these from MyCase fallbacks.
+   * For currentDirection = 'hs_to_mc': returns MyCase field names mapped ONLY as 'mc_to_hs'
+   *   → processors must NOT overwrite these from HubSpot fallbacks.
+   */
+  async getSourceOfTruthLockedFields(
+    installationId: string,
+    objectType: ObjectType,
+    currentDirection: SyncDirection,
+  ): Promise<Set<string>> {
+    const mappings = await this.list(installationId, objectType);
+    const oppositeDir = currentDirection === 'mc_to_hs' ? 'hs_to_mc' : 'mc_to_hs';
+    const locked = new Set<string>();
+    for (const m of mappings) {
+      if (m.direction === oppositeDir) {
+        // The locked field is the DESTINATION in the current direction
+        const destField = currentDirection === 'mc_to_hs' ? m.hubspotField : m.mycaseField;
+        locked.add(destField);
+      }
+    }
+    return locked;
+  }
+
   // ── Apply mapping ─────────────────────────────────────────────────────────
 
   /**

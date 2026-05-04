@@ -84,12 +84,15 @@ export class DealToMatterProcessor extends BaseProcessor {
     }
 
     // 4. Apply field mapping (hs_object_id injected so users can map it to a MyCase custom field)
-    const mapped = await this.fieldMapping.applyMapping(
-      installationId,
-      'deal',
-      'hs_to_mc',
-      { ...props as Record<string, unknown>, hs_object_id: deal.id },
-    );
+    const [mapped, lockedFields] = await Promise.all([
+      this.fieldMapping.applyMapping(
+        installationId,
+        'deal',
+        'hs_to_mc',
+        { ...props as Record<string, unknown>, hs_object_id: deal.id },
+      ),
+      this.fieldMapping.getSourceOfTruthLockedFields(installationId, 'deal', 'hs_to_mc'),
+    ]);
 
     // 5. Resolve deal stage → MyCase status + stage label
     const mycaseStatus = props.dealstage && props.pipeline
@@ -109,22 +112,24 @@ export class DealToMatterProcessor extends BaseProcessor {
 
     // 6. Compose final matter payload
     this.logger.log(`Deal ${sourceId} mapped fields: ${JSON.stringify(mapped)}`);
-    // Amount must be configured via field mapping (HubSpot amount → custom_field:ID).
-    // Do NOT fall back to outstanding_balance — that's a different MyCase field and
-    // writing to it causes mc_to_hs to overwrite HubSpot amount on the next poll.
+
+    // Helper: include a field only if it has a mapped value OR is not locked to MyCase
+    const field = (name: string, mappedVal: unknown, fallback: unknown): unknown => {
+      if (mappedVal != null) return mappedVal;
+      if (lockedFields.has(name)) return undefined; // MyCase is source of truth — don't overwrite
+      return fallback ?? undefined;
+    };
+
     const customFieldValues = extractCustomFieldValues(mapped);
-    // HubSpot amount is stored as a dollar string (e.g. "1500.00").
-    // The currency_cents field mapping converts it to cents (e.g. 150000).
-    // If no mapping is configured, fall back to parsing amount directly as cents.
-    const rateRaw = mapped['rate'] ?? (props.amount ? Math.round(parseFloat(props.amount as string) * 100) : undefined);
+    const rateRaw = field('rate', mapped['rate'], props.amount ? Math.round(parseFloat(props.amount as string) * 100) : undefined);
     const matterData: McMatterInput = {
-      name: (mapped['name'] as string) ?? props.dealname ?? 'Untitled Matter',
+      name: field('name', mapped['name'], props.dealname ?? 'Untitled Matter') as string,
       clients: [{ id: Number(mycaseClientId) }],
       status: (mycaseStatus ?? 'open').toLowerCase() as 'open' | 'closed',
-      case_stage: (mapped['case_stage'] as string | undefined) ?? stageLabel ?? undefined,
-      practice_area: mapped['practice_area'] as string | undefined,
-      description: mapped['description'] as string | undefined,
-      opened_date: mapped['opened_date'] as string | undefined,
+      case_stage: field('case_stage', mapped['case_stage'], stageLabel) as string | undefined,
+      practice_area: field('practice_area', mapped['practice_area'], undefined) as string | undefined,
+      description: field('description', mapped['description'], undefined) as string | undefined,
+      opened_date: field('opened_date', mapped['opened_date'], undefined) as string | undefined,
       rate: rateRaw != null ? Number(rateRaw) : undefined,
       custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined,
     };
