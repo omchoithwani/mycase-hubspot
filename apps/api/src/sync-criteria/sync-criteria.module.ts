@@ -6,12 +6,14 @@ import { SyncCriteriaService } from './sync-criteria.service';
 import { SyncCriteriaController } from './sync-criteria.controller';
 import { HubSpotModule } from '../hubspot/hubspot.module';
 import { InstallationModule } from '../installation/installation.module';
+import { MyCaseModule } from '../mycase/mycase.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([SyncCriteria]),
     HubSpotModule,
     InstallationModule,
+    MyCaseModule,
   ],
   controllers: [SyncCriteriaController],
   providers: [CriteriaEvaluatorService, SyncCriteriaService],

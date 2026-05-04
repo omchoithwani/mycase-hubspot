@@ -17,6 +17,7 @@ export interface SyncJobPayload {
   triggeredBy: 'webhook' | 'poll' | 'manual';
   rawPayload?: Record<string, unknown>;
   attempt?: number;
+  force?: boolean;
 }
 
 export interface SyncResult {

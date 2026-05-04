@@ -1,7 +1,9 @@
 import {
   Controller,
   Get,
+  Post,
   Query,
+  Body,
   Headers,
   Logger,
   HttpCode,
@@ -11,6 +13,7 @@ import { createHash } from 'crypto';
 import { InstallationService } from '../installation/installation.service';
 import { SyncRecordService } from '../sync/sync-record.service';
 import { MyCaseClientService } from '../mycase/mycase-client.service';
+import { InitialSyncService } from '../sync/initial-sync.service';
 
 function mycaseWebBase(webBase: string | null): string {
   if (webBase) return webBase.replace(/\/$/, '');
@@ -26,6 +29,7 @@ export class CrmCardController {
     private readonly syncRecords: SyncRecordService,
     private readonly mycase: MyCaseClientService,
     private readonly config: ConfigService,
+    private readonly initialSync: InitialSyncService,
   ) {}
 
   /**
@@ -150,6 +154,28 @@ export class CrmCardController {
       this.logger.warn(`CRM card deal ${dealId}: ${err.message}`);
       return this.emptyCard(`Could not load MyCase case #${mycaseObjectId}`);
     }
+  }
+
+  /**
+   * Triggered by card buttons — enqueues a HubSpot→MyCase sync for the record.
+   * POST /crm-cards/sync
+   * Body: { portalId, objectId, objectType: 'contact'|'deal', force?: boolean }
+   */
+  @Post('sync')
+  @HttpCode(200)
+  async syncRecord(
+    @Body() body: { portalId: string; objectId: string; objectType: 'contact' | 'deal'; force?: boolean },
+  ) {
+    const installation = await this.findInstallation(body.portalId);
+    if (!installation) return { queued: false, error: 'Installation not found' };
+    await this.initialSync.triggerSingleRecord(
+      installation.id,
+      body.objectType,
+      body.objectId,
+      'hs_to_mc',
+      body.force ?? false,
+    );
+    return { queued: true };
   }
 
   private async findInstallation(portalId: string) {

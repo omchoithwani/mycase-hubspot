@@ -24,6 +24,7 @@ export class InitialSyncService {
     objectType: 'contact' | 'deal',
     recordId: string,
     direction: 'hs_to_mc' | 'mc_to_hs',
+    force = false,
   ): Promise<void> {
     const queue = direction === 'hs_to_mc' ? this.hsToMcQueue : this.mcToHsQueue;
     const sourceSystem = direction === 'hs_to_mc' ? 'hubspot' : 'mycase';
@@ -36,6 +37,7 @@ export class InitialSyncService {
         sourceId: recordId,
         sourceSystem,
         triggeredBy: 'manual',
+        force,
       } as SyncJobPayload,
       {
         ...SYNC_JOB_OPTIONS,

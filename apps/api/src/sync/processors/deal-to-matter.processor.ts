@@ -58,14 +58,16 @@ export class DealToMatterProcessor extends BaseProcessor {
 
     const props = deal.properties;
 
-    // 2. Evaluate sync criteria
-    const eligible = await this.syncCriteria.evaluate(
-      installationId,
-      'deal',
-      'hubspot',
-      props as Record<string, unknown>,
-    );
-    if (!eligible) return this.skip('Record does not meet sync criteria');
+    // 2. Evaluate sync criteria (skipped when force=true)
+    if (!payload.force) {
+      const eligible = await this.syncCriteria.evaluate(
+        installationId,
+        'deal',
+        'hubspot',
+        props as Record<string, unknown>,
+      );
+      if (!eligible) return this.skip('Record does not meet sync criteria');
+    }
 
     // 3. Resolve linked MyCase client via HubSpot associations API
     const mycaseClientId = await this.resolveLinkedClient(

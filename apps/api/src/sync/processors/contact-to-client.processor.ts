@@ -54,14 +54,16 @@ export class ContactToClientProcessor extends BaseProcessor {
       allProps.map((p) => p.name),
     );
 
-    // 2. Evaluate sync criteria
-    const eligible = await this.syncCriteria.evaluate(
-      installationId,
-      'contact',
-      'hubspot',
-      contact.properties as Record<string, unknown>,
-    );
-    if (!eligible) return this.skip('Record does not meet sync criteria');
+    // 2. Evaluate sync criteria (skipped when force=true)
+    if (!payload.force) {
+      const eligible = await this.syncCriteria.evaluate(
+        installationId,
+        'contact',
+        'hubspot',
+        contact.properties as Record<string, unknown>,
+      );
+      if (!eligible) return this.skip('Record does not meet sync criteria');
+    }
 
     // 3. Apply configured field mapping (hs_object_id injected so users can map it to a MyCase custom field)
     const mapped = await this.fieldMapping.applyMapping(

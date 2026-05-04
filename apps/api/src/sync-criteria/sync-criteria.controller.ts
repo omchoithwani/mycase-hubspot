@@ -16,6 +16,7 @@ import { SyncCriteriaService, SourceSystem } from './sync-criteria.service';
 import { HubSpotClientService } from '../hubspot/hubspot-client.service';
 import { HubSpotPropertiesService } from '../hubspot/hubspot-properties.service';
 import { InstallationService } from '../installation/installation.service';
+import { MyCaseClientService } from '../mycase/mycase-client.service';
 
 @Controller('installations/:installationId/sync-criteria')
 export class SyncCriteriaController {
@@ -24,6 +25,7 @@ export class SyncCriteriaController {
     private readonly hubspot: HubSpotClientService,
     private readonly hsProperties: HubSpotPropertiesService,
     private readonly installations: InstallationService,
+    private readonly mycase: MyCaseClientService,
   ) {}
 
   @Get()
@@ -119,64 +121,63 @@ export class SyncCriteriaController {
     }
 
     const installation = await this.installations.findByIdOrFail(installationId);
-    const portalId = installation.hubspotPortalId;
-
-    // Fetch all HubSpot property names so we get full data for evaluation
-    const hsObjType = objectType === 'contact' ? 'contacts' : 'deals';
-    const allProps = await this.hsProperties.fetchProperties(portalId, installationId, hsObjType);
-    const propNames = allProps.map((p) => p.name);
 
     let properties: Record<string, unknown>;
     let foundId: string;
 
-    if (objectType === 'contact') {
-      let contact: { id: string; properties: Record<string, unknown> } | null = null;
-
-      if (recordId) {
-        try {
-          const raw = await this.hubspot['call'](portalId, installationId, (http: any) =>
-            http
-              .get(`/crm/v3/objects/contacts/${recordId}`, {
-                params: { properties: propNames.join(',') },
-              })
-              .then((r: any) => r.data),
-          );
-          contact = raw as any;
-        } catch {
-          throw new NotFoundException(`Contact ${recordId} not found`);
-        }
-      } else if (email) {
-        const results = await this.hubspot.searchContacts(
-          portalId,
-          installationId,
-          [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }],
-          propNames,
-        );
-        if (!results.length) throw new NotFoundException(`No contact found with email ${email}`);
-        contact = results[0] as any;
-      }
-
-      if (!contact) throw new NotFoundException('Contact not found');
-      foundId = contact.id;
-      properties = contact.properties as Record<string, unknown>;
-    } else {
-      // deal — must use recordId
-      if (!recordId) throw new BadRequestException('recordId is required for deals');
-      let deal: { id: string; properties: Record<string, unknown> } | null = null;
+    if (sourceSystem === 'mycase') {
+      if (!recordId) throw new BadRequestException('recordId is required for MyCase records');
       try {
-        deal = await this.hubspot['call'](portalId, installationId, (http: any) =>
-          http
-            .get(`/crm/v3/objects/deals/${recordId}`, {
-              params: { properties: propNames.join(',') },
-            })
-            .then((r: any) => r.data),
-        ) as any;
+        if (objectType === 'contact') {
+          const client = await this.mycase.getClient(installationId, recordId);
+          foundId = String(client.id);
+          properties = client as unknown as Record<string, unknown>;
+        } else {
+          const matter = await this.mycase.getMatter(installationId, recordId);
+          foundId = String(matter.id);
+          properties = matter as unknown as Record<string, unknown>;
+        }
       } catch {
-        throw new NotFoundException(`Deal ${recordId} not found`);
+        throw new NotFoundException(`MyCase ${objectType} ${recordId} not found`);
       }
-      if (!deal) throw new NotFoundException('Deal not found');
-      foundId = deal.id;
-      properties = deal.properties as Record<string, unknown>;
+    } else {
+      const portalId = installation.hubspotPortalId;
+      const hsObjType = objectType === 'contact' ? 'contacts' : 'deals';
+      const allProps = await this.hsProperties.fetchProperties(portalId, installationId, hsObjType);
+      const propNames = allProps.map((p) => p.name);
+
+      if (objectType === 'contact') {
+        let contact: { id: string; properties: Record<string, unknown> } | null = null;
+        if (recordId) {
+          try {
+            contact = await this.hubspot['call'](portalId, installationId, (http: any) =>
+              http.get(`/crm/v3/objects/contacts/${recordId}`, { params: { properties: propNames.join(',') } }).then((r: any) => r.data),
+            ) as any;
+          } catch { throw new NotFoundException(`Contact ${recordId} not found`); }
+        } else if (email) {
+          const results = await this.hubspot.searchContacts(
+            portalId, installationId,
+            [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }],
+            propNames,
+          );
+          if (!results.length) throw new NotFoundException(`No contact found with email ${email}`);
+          contact = results[0] as any;
+        }
+        if (!contact) throw new NotFoundException('Contact not found');
+        foundId = contact.id;
+        properties = contact.properties as Record<string, unknown>;
+      } else {
+        if (!recordId) throw new BadRequestException('recordId is required for deals');
+        let deal: { id: string; properties: Record<string, unknown> } | null = null;
+        try {
+          deal = await this.hubspot['call'](installation.hubspotPortalId, installationId, (http: any) =>
+            http.get(`/crm/v3/objects/deals/${recordId}`, { params: { properties: propNames.join(',') } }).then((r: any) => r.data),
+          ) as any;
+        } catch { throw new NotFoundException(`Deal ${recordId} not found`); }
+        if (!deal) throw new NotFoundException('Deal not found');
+        foundId = deal.id;
+        properties = deal.properties as Record<string, unknown>;
+      }
     }
 
     const detail = await this.service.evaluateDetails(

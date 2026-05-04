@@ -711,7 +711,7 @@ function SyncCriteriaContent() {
     }
   }
 
-  async function handleSyncNow() {
+  async function handleSyncNow(force = false) {
     if (!testResult || objectType === 'note') return;
     setSyncingNow(true);
     setSyncNowDone(false);
@@ -720,7 +720,7 @@ function SyncCriteriaContent() {
       await fetch(`${API}/installations/${installationId}/sync-jobs/force-record`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ objectType, recordId: testResult.recordId, direction }),
+        body: JSON.stringify({ objectType, recordId: testResult.recordId, direction, force }),
       });
       setSyncNowDone(true);
     } finally {
@@ -874,7 +874,7 @@ function SyncCriteriaContent() {
           <>
             {/* Mode toggle — email only available for contacts */}
             <div className="flex gap-0 mb-3 border border-slate-200 rounded-lg overflow-hidden w-fit">
-              {objectType === 'contact' && (
+              {objectType === 'contact' && sourceSystem === 'hubspot' && (
                 <button
                   onClick={() => { setTestMode('email'); setTestInput(''); setTestResult(null); setTestError(''); }}
                   className={`text-xs font-medium px-3 py-1.5 transition-colors ${testMode === 'email' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
@@ -893,8 +893,8 @@ function SyncCriteriaContent() {
             {/* Input + button */}
             <div className="flex gap-2 mb-3">
               <input
-                type={testMode === 'email' && objectType === 'contact' ? 'email' : 'text'}
-                placeholder={testMode === 'email' ? 'contact@example.com' : 'HubSpot record ID'}
+                type={testMode === 'email' && objectType === 'contact' && sourceSystem === 'hubspot' ? 'email' : 'text'}
+                placeholder={testMode === 'email' && sourceSystem === 'hubspot' ? 'contact@example.com' : sourceSystem === 'mycase' ? `MyCase ${objectType === 'contact' ? 'client' : 'case'} ID` : 'HubSpot record ID'}
                 value={testInput}
                 onChange={(e) => setTestInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && void handleTest()}
@@ -973,17 +973,29 @@ function SyncCriteriaContent() {
                   </div>
                 )}
 
-                {testResult.passed && (
-                  <div className="flex items-center gap-3">
+                {objectType !== 'note' && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {testResult.passed && (
+                      <button
+                        onClick={() => void handleSyncNow(false)}
+                        disabled={syncingNow || syncNowDone}
+                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        <span className={`material-symbols-outlined text-[16px] ${syncingNow ? 'animate-spin' : ''}`}>
+                          {syncingNow ? 'autorenew' : 'sync'}
+                        </span>
+                        {syncingNow ? 'Queuing…' : syncNowDone ? 'Queued!' : 'Sync Now'}
+                      </button>
+                    )}
                     <button
-                      onClick={() => void handleSyncNow()}
+                      onClick={() => void handleSyncNow(true)}
                       disabled={syncingNow || syncNowDone}
-                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                      className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
                     >
                       <span className={`material-symbols-outlined text-[16px] ${syncingNow ? 'animate-spin' : ''}`}>
-                        {syncingNow ? 'autorenew' : 'sync'}
+                        {syncingNow ? 'autorenew' : 'bolt'}
                       </span>
-                      {syncingNow ? 'Queuing…' : syncNowDone ? 'Queued!' : 'Sync Now'}
+                      {syncingNow ? 'Queuing…' : syncNowDone ? 'Queued!' : 'Force Sync'}
                     </button>
                     {syncNowDone && (
                       <span className="text-xs text-slate-500">Job enqueued — check Sync History to track progress.</span>

@@ -44,6 +44,7 @@ export class SyncJobController {
       objectType: 'contact' | 'deal';
       recordId: string;
       direction: 'hs_to_mc' | 'mc_to_hs';
+      force?: boolean;
     },
   ) {
     await this.initialSync.triggerSingleRecord(
@@ -51,6 +52,7 @@ export class SyncJobController {
       body.objectType,
       body.recordId,
       body.direction,
+      body.force ?? false,
     );
     return { queued: true };
   }
