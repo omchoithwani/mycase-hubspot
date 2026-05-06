@@ -241,14 +241,76 @@ export class DealToMatterProcessor extends BaseProcessor {
     mismatches: import('@mycase-hubspot/shared-types').FieldMismatch[],
   ): Record<string, unknown> | null {
     if (err?.statusCode !== 422 || !err?.responseData?.errors) return null;
-    const invalidFields = Object.keys(err.responseData.errors as Record<string, string[]>);
+    const errors = err.responseData.errors;
+
+    // Array format (JSON API): [{description, source: {pointer: "/field" or "/array/index/..."}}]
+    if (Array.isArray(errors)) {
+      if (errors.length === 0) return null;
+      const stripped: Record<string, unknown> = JSON.parse(JSON.stringify(payload));
+      const arrayRemovals = new Map<string, number[]>();
+      const fieldLabels: string[] = [];
+
+      for (const error of errors) {
+        const pointer: string = error?.source?.pointer ?? '';
+        const reason: string = error?.description ?? 'Invalid value';
+        const parts = pointer.split('/').filter(Boolean);
+        if (parts.length === 0) continue;
+
+        if (parts.length === 1) {
+          // Simple top-level field: /field_name
+          const fieldName = parts[0];
+          fieldLabels.push(fieldName);
+          mismatches.push({ field: fieldName, droppedValue: payload[fieldName], reason });
+          delete stripped[fieldName];
+        } else {
+          // Nested: /array_key/index/...
+          const arrayKey = parts[0];
+          const index = parseInt(parts[1], 10);
+          if (isNaN(index)) {
+            fieldLabels.push(arrayKey);
+            mismatches.push({ field: arrayKey, droppedValue: payload[arrayKey], reason });
+            delete stripped[arrayKey];
+          } else {
+            const arr = payload[arrayKey];
+            let fieldLabel = `${arrayKey}[${index}]`;
+            if (arrayKey === 'custom_field_values' && Array.isArray(arr)) {
+              const cfId = (arr as any[])[index]?.custom_field?.id;
+              if (cfId != null) fieldLabel = `custom_field:${cfId}`;
+            }
+            fieldLabels.push(fieldLabel);
+            mismatches.push({
+              field: fieldLabel,
+              droppedValue: Array.isArray(arr) ? (arr as any[])[index] : undefined,
+              reason,
+            });
+            if (!arrayRemovals.has(arrayKey)) arrayRemovals.set(arrayKey, []);
+            arrayRemovals.get(arrayKey)!.push(index);
+          }
+        }
+      }
+
+      // Remove array elements in reverse index order to avoid shifting
+      for (const [arrayKey, indices] of arrayRemovals) {
+        const arr = stripped[arrayKey];
+        if (Array.isArray(arr)) {
+          [...new Set(indices)].sort((a, b) => b - a).forEach((i) => (arr as any[]).splice(i, 1));
+          if ((arr as any[]).length === 0) delete stripped[arrayKey];
+        }
+      }
+
+      this.logger.warn(`MyCase 422 — stripping [${fieldLabels.join(', ')}] and retrying`);
+      return stripped;
+    }
+
+    // Object format fallback: { field: ['message', ...] }
+    const invalidFields = Object.keys(errors as Record<string, string[]>);
     if (invalidFields.length === 0) return null;
     this.logger.warn(`MyCase 422 — stripping [${invalidFields.join(', ')}] and retrying`);
     for (const f of invalidFields) {
       mismatches.push({
         field: f,
         droppedValue: payload[f],
-        reason: (err.responseData.errors[f] as string[])?.[0] ?? 'Invalid value',
+        reason: (errors[f] as string[])?.[0] ?? 'Invalid value',
       });
     }
     const stripped = { ...payload };
