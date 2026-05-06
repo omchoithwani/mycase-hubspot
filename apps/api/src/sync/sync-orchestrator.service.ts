@@ -109,6 +109,25 @@ export class SyncOrchestrator {
         await this.syncJobService.markSkipped(dbJob.id, result.reason ?? '');
       } else if (result.success) {
         await this.syncJobService.markSuccess(dbJob.id, result);
+        if (result.fieldMismatches?.length) {
+          // Clear old mismatch warnings, then log the new ones
+          await this.errorLogService.clearMismatches(installationId, sourceId);
+          for (const m of result.fieldMismatches) {
+            await this.errorLogService.logWarning({
+              installationId,
+              syncJobId: dbJob.id,
+              objectType,
+              direction,
+              sourceId,
+              errorCode: 'FIELD_MISMATCH',
+              errorMessage: `Field "${m.field}" was dropped: ${m.reason}`,
+              rawResponse: { field: m.field, droppedValue: m.droppedValue, reason: m.reason },
+            });
+          }
+        } else if (result.destinationId) {
+          // Clean sync — clear any stale mismatch warnings
+          await this.errorLogService.clearMismatches(installationId, sourceId);
+        }
       } else {
         await this.syncJobService.markFailed(dbJob.id, result.reason ?? 'Unknown error');
         await this.errorLogService.log({

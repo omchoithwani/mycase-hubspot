@@ -10,7 +10,7 @@ import { FieldMappingService } from '../../field-mapping/field-mapping.service';
 import { StageMappingService } from '../../stage-mapping/stage-mapping.service';
 import { DuplicateDetectorService } from '../../duplicate/duplicate-detector.service';
 import { SyncCriteriaService } from '../../sync-criteria/sync-criteria.service';
-import { McMatterInput, McCustomFieldValue } from '../../mycase/dto/matter.dto';
+import { McMatterInput, McMatter, McCustomFieldValue } from '../../mycase/dto/matter.dto';
 
 function extractCustomFieldValues(mapped: Record<string, unknown>): McCustomFieldValue[] {
   return Object.entries(mapped)
@@ -110,6 +110,8 @@ export class DealToMatterProcessor extends BaseProcessor {
         )
       : null;
 
+    const fieldMismatches: import('@mycase-hubspot/shared-types').FieldMismatch[] = [];
+
     // 6. Look up existing sync record first so we know create vs update
     const existing = await this.syncRecords.findByHubSpotId(
       installationId,
@@ -179,7 +181,14 @@ export class DealToMatterProcessor extends BaseProcessor {
       }
 
       this.logger.log(`Creating MyCase matter — payload: ${JSON.stringify(matterData)}`);
-      const created = await this.mycase.createMatter(installationId, matterData);
+      let created: McMatter;
+      try {
+        created = await this.mycase.createMatter(installationId, matterData);
+      } catch (err: any) {
+        const stripped = this.stripMyCaseInvalid(err, matterData as unknown as Record<string, unknown>, fieldMismatches);
+        if (!stripped) throw err;
+        created = await this.mycase.createMatter(installationId, stripped as unknown as McMatterInput);
+      }
       mycaseId = String(created.id);
       action = 'created';
       this.logger.log(`Created MyCase matter ${mycaseId} from HubSpot deal ${sourceId}`);
@@ -187,7 +196,13 @@ export class DealToMatterProcessor extends BaseProcessor {
       // Strip custom_field_values from updates — MyCase PUT appends rather than
       // replaces them, causing duplicates on every sync run.
       const { custom_field_values: _cfv, ...updateData } = matterData;
-      await this.mycase.updateMatter(installationId, mycaseId, updateData);
+      try {
+        await this.mycase.updateMatter(installationId, mycaseId, updateData);
+      } catch (err: any) {
+        const stripped = this.stripMyCaseInvalid(err, updateData as unknown as Record<string, unknown>, fieldMismatches);
+        if (!stripped) throw err;
+        await this.mycase.updateMatter(installationId, mycaseId, stripped);
+      }
       action = 'updated';
     }
 
@@ -212,7 +227,33 @@ export class DealToMatterProcessor extends BaseProcessor {
       this.logger.warn(`Could not write my_case_id back to deal ${sourceId}`);
     }
 
-    return { success: true, action, destinationId: mycaseId };
+    return { success: true, action, destinationId: mycaseId, fieldMismatches };
+  }
+
+  /**
+   * On a MyCase 422 with field-level errors, strips the invalid fields from
+   * payload, records them as fieldMismatches, and returns the stripped payload.
+   * Returns null if the error is not a recoverable 422.
+   */
+  private stripMyCaseInvalid(
+    err: any,
+    payload: Record<string, unknown>,
+    mismatches: import('@mycase-hubspot/shared-types').FieldMismatch[],
+  ): Record<string, unknown> | null {
+    if (err?.statusCode !== 422 || !err?.responseData?.errors) return null;
+    const invalidFields = Object.keys(err.responseData.errors as Record<string, string[]>);
+    if (invalidFields.length === 0) return null;
+    this.logger.warn(`MyCase 422 — stripping [${invalidFields.join(', ')}] and retrying`);
+    for (const f of invalidFields) {
+      mismatches.push({
+        field: f,
+        droppedValue: payload[f],
+        reason: (err.responseData.errors[f] as string[])?.[0] ?? 'Invalid value',
+      });
+    }
+    const stripped = { ...payload };
+    invalidFields.forEach((f) => delete stripped[f]);
+    return stripped;
   }
 
   private async resolveLinkedClient(

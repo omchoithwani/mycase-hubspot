@@ -20,12 +20,19 @@ export interface SyncJobPayload {
   force?: boolean;
 }
 
+export interface FieldMismatch {
+  field: string;
+  droppedValue: unknown;
+  reason: string;
+}
+
 export interface SyncResult {
   success: boolean;
   destinationId?: string;
   action: 'created' | 'updated' | 'skipped' | 'failed';
   reason?: string;
   errorCode?: string;
+  fieldMismatches?: FieldMismatch[];
 }
 
 export interface ISyncProcessor {

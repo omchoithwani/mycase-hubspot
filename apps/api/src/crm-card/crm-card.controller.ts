@@ -12,6 +12,7 @@ import { InstallationService } from '../installation/installation.service';
 import { SyncRecordService } from '../sync/sync-record.service';
 import { MyCaseClientService } from '../mycase/mycase-client.service';
 import { InitialSyncService } from '../sync/initial-sync.service';
+import { ErrorLogService } from '../error-log/error-log.service';
 
 function mycaseWebBase(webBase: string | null): string {
   if (webBase) return webBase.replace(/\/$/, '');
@@ -28,6 +29,7 @@ export class CrmCardController {
     private readonly mycase: MyCaseClientService,
     private readonly config: ConfigService,
     private readonly initialSync: InitialSyncService,
+    private readonly errorLogs: ErrorLogService,
   ) {}
 
   /**
@@ -121,8 +123,17 @@ export class CrmCardController {
     }
 
     try {
-      const matter = await this.mycase.getMatter(installation.id, mycaseObjectId);
+      const [matter, mismatchLogs] = await Promise.all([
+        this.mycase.getMatter(installation.id, mycaseObjectId),
+        this.errorLogs.findMismatchesBySourceId(installation.id, dealId),
+      ]);
       const caseUrl = `${mycaseWebBase(installation.mycaseWebBaseUrl)}/court_cases/${matter.id}`;
+
+      const fieldWarnings = mismatchLogs.map((log) => ({
+        field: (log.rawResponse as any)?.field ?? log.errorMessage,
+        droppedValue: (log.rawResponse as any)?.droppedValue,
+        reason: (log.rawResponse as any)?.reason ?? log.errorMessage,
+      }));
 
       return {
         results: [
@@ -145,6 +156,7 @@ export class CrmCardController {
                 : []),
               { label: 'MyCase ID', dataType: 'STRING', value: String(matter.id) },
             ],
+            fieldWarnings,
           },
         ],
       };

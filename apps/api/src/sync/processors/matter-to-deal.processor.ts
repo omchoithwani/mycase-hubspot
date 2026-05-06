@@ -142,6 +142,7 @@ export class MatterToDealProcessor extends BaseProcessor {
     // 9. Duplicate detection (create path only)
     let hubspotId = existing?.hubspotObjectId;
     let action: 'created' | 'updated';
+    const fieldMismatches: import('@mycase-hubspot/shared-types').FieldMismatch[] = [];
 
     if (!hubspotId) {
       const dupResult = await this.duplicateDetector.findExistingDeal(
@@ -169,21 +170,25 @@ export class MatterToDealProcessor extends BaseProcessor {
         return this.skip(`Linked to existing HubSpot deal (${dupResult.confidence} match)`);
       }
 
-      const created = await this.hubspot.createDeal(
-        installation.hubspotPortalId,
-        installationId,
-        dealData,
-      );
+      let created: { id: string };
+      try {
+        created = await this.hubspot.createDeal(installation.hubspotPortalId, installationId, dealData);
+      } catch (err: any) {
+        const stripped = this.stripHubSpotInvalid(err, dealData as Record<string, unknown>, fieldMismatches);
+        if (!stripped) throw err;
+        created = await this.hubspot.createDeal(installation.hubspotPortalId, installationId, stripped as any);
+      }
       hubspotId = created.id;
       action = 'created';
       this.logger.log(`Created HubSpot deal ${hubspotId} from MyCase matter ${sourceId}`);
     } else {
-      await this.hubspot.updateDeal(
-        installation.hubspotPortalId,
-        installationId,
-        hubspotId,
-        dealData,
-      );
+      try {
+        await this.hubspot.updateDeal(installation.hubspotPortalId, installationId, hubspotId, dealData);
+      } catch (err: any) {
+        const stripped = this.stripHubSpotInvalid(err, dealData as Record<string, unknown>, fieldMismatches);
+        if (!stripped) throw err;
+        await this.hubspot.updateDeal(installation.hubspotPortalId, installationId, hubspotId, stripped as any);
+      }
       action = 'updated';
     }
 
@@ -218,6 +223,33 @@ export class MatterToDealProcessor extends BaseProcessor {
       direction: 'mc_to_hs',
     });
 
-    return { success: true, action, destinationId: hubspotId };
+    return { success: true, action, destinationId: hubspotId, fieldMismatches };
+  }
+
+  /**
+   * On a HubSpot 422 with validationResults, strips the invalid fields from
+   * payload, records them as fieldMismatches, and returns the stripped payload.
+   * Returns null if the error is not a recoverable 422.
+   */
+  private stripHubSpotInvalid(
+    err: any,
+    payload: Record<string, unknown>,
+    mismatches: import('@mycase-hubspot/shared-types').FieldMismatch[],
+  ): Record<string, unknown> | null {
+    if (err?.statusCode !== 422) return null;
+    const validationResults: any[] = err?.responseData?.validationResults ?? [];
+    const invalidFields = validationResults.filter((r) => !r.isValid).map((r) => r.name as string);
+    if (invalidFields.length === 0) return null;
+    this.logger.warn(`HubSpot 422 — stripping [${invalidFields.join(', ')}] and retrying`);
+    for (const r of validationResults.filter((r) => !r.isValid)) {
+      mismatches.push({
+        field: r.name,
+        droppedValue: payload[r.name],
+        reason: r.message ?? 'Invalid value',
+      });
+    }
+    const stripped = { ...payload };
+    invalidFields.forEach((f) => delete stripped[f]);
+    return stripped;
   }
 }

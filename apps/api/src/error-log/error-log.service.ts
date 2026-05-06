@@ -60,6 +60,44 @@ export class ErrorLogService {
     });
   }
 
+  /** Log a non-blocking warning (field mismatch etc.) — marked resolved so it
+   *  doesn't appear as an actionable error but is still queryable. */
+  async logWarning(data: ErrorLogInput): Promise<ErrorLog> {
+    const entry = this.repo.create({
+      installationId: data.installationId,
+      syncJobId: data.syncJobId ?? null,
+      objectType: data.objectType,
+      direction: data.direction,
+      sourceId: data.sourceId,
+      errorCode: data.errorCode,
+      errorMessage: data.errorMessage,
+      rawResponse: data.rawResponse ?? null,
+      resolved: false,
+      retryCount: 0,
+    });
+    return this.repo.save(entry);
+  }
+
+  /** Returns unresolved FIELD_MISMATCH warnings for a specific record. */
+  async findMismatchesBySourceId(
+    installationId: string,
+    sourceId: string,
+  ): Promise<ErrorLog[]> {
+    return this.repo.find({
+      where: { installationId, sourceId, errorCode: 'FIELD_MISMATCH', resolved: false },
+      order: { createdAt: 'DESC' },
+      take: 20,
+    });
+  }
+
+  /** Clears all FIELD_MISMATCH warnings for a record (called when a clean sync succeeds). */
+  async clearMismatches(installationId: string, sourceId: string): Promise<void> {
+    await this.repo.update(
+      { installationId, sourceId, errorCode: 'FIELD_MISMATCH' },
+      { resolved: true },
+    );
+  }
+
   async resolve(id: string, installationId: string): Promise<void> {
     await this.repo.update({ id, installationId }, { resolved: true });
   }

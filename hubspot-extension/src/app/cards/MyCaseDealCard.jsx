@@ -84,10 +84,23 @@ const MyCaseDealCard = ({ context }) => {
 
   const fields = (matter?.properties ?? []).filter((f) => f.dataType !== 'STATUS');
   const statusField = (matter?.properties ?? []).find((f) => f.dataType === 'STATUS');
+  const warnings = matter?.fieldWarnings ?? [];
 
   return (
     <Flex direction="column" gap="small">
       {syncMessage && <Alert title="Sync" variant="info">{syncMessage}</Alert>}
+
+      {warnings.length > 0 && (
+        <Alert title={`${warnings.length} field${warnings.length > 1 ? 's' : ''} not synced — value mismatch`} variant="warning">
+          {warnings.map((w) => (
+            <Text key={w.field}>
+              <Text format={{ fontWeight: 'bold' }}>{w.field}</Text>{': "'}
+              {String(w.droppedValue ?? '')}
+              {'" — '}{w.reason}
+            </Text>
+          ))}
+        </Alert>
+      )}
 
       {message || !matter ? (
         <Alert title="MyCase" variant="info">{message}</Alert>
