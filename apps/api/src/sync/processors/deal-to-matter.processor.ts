@@ -84,7 +84,7 @@ export class DealToMatterProcessor extends BaseProcessor {
     }
 
     // 4. Apply field mapping (hs_object_id injected so users can map it to a MyCase custom field)
-    const [mapped, lockedFields] = await Promise.all([
+    const [mapped, lockedFields, rawMappings] = await Promise.all([
       this.fieldMapping.applyMapping(
         installationId,
         'deal',
@@ -92,7 +92,16 @@ export class DealToMatterProcessor extends BaseProcessor {
         { ...props as Record<string, unknown>, hs_object_id: deal.id },
       ),
       this.fieldMapping.getSourceOfTruthLockedFields(installationId, 'deal', 'hs_to_mc'),
+      this.fieldMapping.list(installationId, 'deal'),
     ]);
+
+    // Build CF ID → HubSpot field name map for human-readable error labels
+    const cfLabelMap = new Map<string, string>();
+    for (const m of rawMappings) {
+      if (m.mycaseField.startsWith('custom_field:')) {
+        cfLabelMap.set(m.mycaseField, m.hubspotField);
+      }
+    }
 
     // 5. Resolve deal stage → MyCase status + stage label
     const mycaseStatus = props.dealstage && props.pipeline
@@ -185,7 +194,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       try {
         created = await this.mycase.createMatter(installationId, matterData);
       } catch (err: any) {
-        const stripped = this.stripMyCaseInvalid(err, matterData as unknown as Record<string, unknown>, fieldMismatches);
+        const stripped = this.stripMyCaseInvalid(err, matterData as unknown as Record<string, unknown>, fieldMismatches, cfLabelMap);
         if (!stripped) throw err;
         created = await this.mycase.createMatter(installationId, stripped as unknown as McMatterInput);
       }
@@ -199,7 +208,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       try {
         await this.mycase.updateMatter(installationId, mycaseId, updateData);
       } catch (err: any) {
-        const stripped = this.stripMyCaseInvalid(err, updateData as unknown as Record<string, unknown>, fieldMismatches);
+        const stripped = this.stripMyCaseInvalid(err, updateData as unknown as Record<string, unknown>, fieldMismatches, cfLabelMap);
         if (!stripped) throw err;
         await this.mycase.updateMatter(installationId, mycaseId, stripped);
       }
@@ -239,6 +248,7 @@ export class DealToMatterProcessor extends BaseProcessor {
     err: any,
     payload: Record<string, unknown>,
     mismatches: import('@mycase-hubspot/shared-types').FieldMismatch[],
+    cfLabelMap: Map<string, string> = new Map(),
   ): Record<string, unknown> | null {
     if (err?.statusCode !== 422 || !err?.responseData?.errors) return null;
     const errors = err.responseData.errors;
@@ -273,16 +283,19 @@ export class DealToMatterProcessor extends BaseProcessor {
           } else {
             const arr = payload[arrayKey];
             let fieldLabel = `${arrayKey}[${index}]`;
+            let droppedValue: unknown = Array.isArray(arr) ? (arr as any[])[index] : undefined;
             if (arrayKey === 'custom_field_values' && Array.isArray(arr)) {
-              const cfId = (arr as any[])[index]?.custom_field?.id;
-              if (cfId != null) fieldLabel = `custom_field:${cfId}`;
+              const cfEntry = (arr as any[])[index];
+              const cfId = cfEntry?.custom_field?.id;
+              if (cfId != null) {
+                const cfKey = `custom_field:${cfId}`;
+                const hsName = cfLabelMap.get(cfKey);
+                fieldLabel = hsName ? `${hsName} (${cfKey})` : cfKey;
+                droppedValue = cfEntry?.value;
+              }
             }
             fieldLabels.push(fieldLabel);
-            mismatches.push({
-              field: fieldLabel,
-              droppedValue: Array.isArray(arr) ? (arr as any[])[index] : undefined,
-              reason,
-            });
+            mismatches.push({ field: fieldLabel, droppedValue, reason });
             if (!arrayRemovals.has(arrayKey)) arrayRemovals.set(arrayKey, []);
             arrayRemovals.get(arrayKey)!.push(index);
           }
