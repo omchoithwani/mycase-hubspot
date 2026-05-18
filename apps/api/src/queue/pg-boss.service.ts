@@ -24,6 +24,10 @@ export class PgBossService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('pg-boss started');
   }
 
+  async createQueue(name: string): Promise<void> {
+    await this.boss.createQueue(name);
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.boss.stop({ graceful: true, timeout: 10_000 });
     this.logger.log('pg-boss stopped');

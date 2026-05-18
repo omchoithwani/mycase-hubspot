@@ -13,6 +13,8 @@ export class SyncJobConsumer implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    await this.pgBoss.createQueue(QUEUE_HS_TO_MC);
+    await this.pgBoss.createQueue(QUEUE_MC_TO_HS);
     await this.pgBoss.work<SyncJobPayload>(QUEUE_HS_TO_MC, async (job) => {
       await this.orchestrator.handle(job);
     });
