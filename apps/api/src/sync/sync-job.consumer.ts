@@ -25,7 +25,7 @@ export class SyncJobConsumer implements OnModuleInit {
       await this.pgBoss.work<SyncJobPayload>(QUEUE_MC_TO_HS, async (job) => {
         await this.orchestrator.handle(job);
       });
-      this.logger.log('Sync job workers registered successfully');
+      this.logger.log('Sync job workers registered and queues verified — ready to process');
     } catch (err: any) {
       this.logger.error(`Failed to register sync job workers: ${err.message}`, err.stack);
       throw err;

@@ -1,13 +1,18 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import PgBoss from 'pg-boss';
+import { DataSource } from 'typeorm';
 
 @Injectable()
 export class PgBossService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PgBossService.name);
   private boss: PgBoss;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @InjectDataSource() private readonly dataSource: DataSource,
+  ) {
     this.boss = new PgBoss({
       connectionString: config.getOrThrow<string>('DATABASE_URL'),
       ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
@@ -25,7 +30,41 @@ export class PgBossService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createQueue(name: string): Promise<void> {
-    await this.boss.createQueue(name);
+    // Try pg-boss built-in createQueue first
+    try {
+      await this.boss.createQueue(name);
+    } catch (err: any) {
+      this.logger.warn(`pg-boss createQueue threw for "${name}": ${err.message}`);
+    }
+
+    // Verify the queue actually exists — pg-boss's createQueue can silently no-op
+    // when its internal connection pool has issues with the Supabase session pooler.
+    const rows = await this.dataSource.query<{ name: string }[]>(
+      'SELECT name FROM pgboss.queue WHERE name = $1',
+      [name],
+    );
+
+    if (rows.length === 0) {
+      this.logger.warn(
+        `Queue "${name}" missing after boss.createQueue — creating via TypeORM DataSource`,
+      );
+      // Call the same pg-boss plpgsql function but via the TypeORM connection pool,
+      // which uses a fresh connection not bound to pg-boss's internal pool state.
+      await this.dataSource.query('SELECT pgboss.create_queue($1, $2::json)', [
+        name,
+        JSON.stringify({
+          policy: 'standard',
+          retryLimit: 2,
+          retryDelay: 0,
+          retryBackoff: false,
+          expireInSeconds: 900,
+          retentionMinutes: 20160,
+        }),
+      ]);
+      this.logger.log(`Queue "${name}" created via TypeORM fallback`);
+    } else {
+      this.logger.log(`Queue "${name}" confirmed in pgboss.queue`);
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
