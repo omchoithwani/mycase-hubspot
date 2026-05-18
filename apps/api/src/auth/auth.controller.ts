@@ -7,7 +7,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHmac, timingSafeEqual } from 'crypto';
 import { HubSpotOAuthService } from './hubspot-oauth.service';
 import { MyCaseOAuthService } from './mycase-oauth.service';
 import { InstallationService } from '../installation/installation.service';
@@ -21,9 +21,6 @@ const CSRF_TTL_MS = 600_000; // 10 minutes
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
-
-  // In-memory CSRF store: key → expiresAt (epoch ms)
-  private readonly csrfStore = new Map<string, number>();
 
   constructor(
     private readonly hubspotOAuth: HubSpotOAuthService,
@@ -41,8 +38,7 @@ export class AuthController {
   @Get('hubspot/install')
   @Redirect()
   async hubspotInstall() {
-    const state = randomBytes(16).toString('hex');
-    this.setCsrf(`csrf:hs:${state}`, state);
+    const state = this.signState(randomBytes(16).toString('hex'));
     const url = this.hubspotOAuth.buildAuthUrl(state);
     return { url };
   }
@@ -59,7 +55,7 @@ export class AuthController {
       throw new BadRequestException(`OAuth denied: ${error}`);
     }
 
-    this.checkAndDeleteCsrf(`csrf:hs:${state}`);
+    this.verifyState(state);
 
     const tokens = await this.hubspotOAuth.exchangeCode(code);
 
@@ -103,8 +99,7 @@ export class AuthController {
       throw new BadRequestException('installationId is required');
     }
 
-    const state = `${installationId}:${randomBytes(12).toString('hex')}`;
-    this.setCsrf(`csrf:mc:${state}`, installationId);
+    const state = this.signState(`${installationId}:${randomBytes(12).toString('hex')}`);
 
     const url = this.mycaseOAuth.buildAuthUrl(state);
     return { url };
@@ -126,9 +121,9 @@ export class AuthController {
       throw new BadRequestException('Missing authorization code from MyCase');
     }
 
-    // State was set as `installationId:nonce`
+    // State is signed as `installationId:nonce:timestamp:mac`
+    this.verifyState(state);
     const installationId = state.split(':')[0];
-    this.checkAndDeleteCsrf(`csrf:mc:${state}`);
 
     if (!installationId) {
       throw new BadRequestException('Invalid or expired state parameter');
@@ -180,21 +175,35 @@ export class AuthController {
 
   // ─── CSRF helpers ─────────────────────────────────────────────────────────
 
-  private setCsrf(key: string, _value: string): void {
-    // Periodically prune expired entries to avoid unbounded growth
-    if (this.csrfStore.size > 1000) {
-      const now = Date.now();
-      for (const [k, exp] of this.csrfStore) {
-        if (exp <= now) this.csrfStore.delete(k);
-      }
-    }
-    this.csrfStore.set(key, Date.now() + CSRF_TTL_MS);
+  private signState(payload: string): string {
+    const timestamp = Date.now().toString();
+    const msg = `${payload}:${timestamp}`;
+    const mac = createHmac('sha256', this.config.getOrThrow<string>('ENCRYPTION_KEY'))
+      .update(msg)
+      .digest('hex')
+      .slice(0, 16);
+    return `${msg}:${mac}`;
   }
 
-  private checkAndDeleteCsrf(key: string): void {
-    const expiresAt = this.csrfStore.get(key);
-    this.csrfStore.delete(key);
-    if (!expiresAt || Date.now() > expiresAt) {
+  private verifyState(state: string): void {
+    const parts = state.split(':');
+    if (parts.length < 3) {
+      throw new BadRequestException('Invalid or expired state parameter');
+    }
+    const mac = parts[parts.length - 1];
+    const timestamp = parts[parts.length - 2];
+    const msg = parts.slice(0, parts.length - 1).join(':');
+    const expectedMac = createHmac('sha256', this.config.getOrThrow<string>('ENCRYPTION_KEY'))
+      .update(msg)
+      .digest('hex')
+      .slice(0, 16);
+    let valid = false;
+    try {
+      valid = timingSafeEqual(Buffer.from(mac), Buffer.from(expectedMac));
+    } catch {
+      valid = false;
+    }
+    if (!valid || Date.now() - parseInt(timestamp, 10) > CSRF_TTL_MS) {
       throw new BadRequestException('Invalid or expired state parameter');
     }
   }
