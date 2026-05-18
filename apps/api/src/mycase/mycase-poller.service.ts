@@ -1,17 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PollingCursor } from '@mycase-hubspot/db';
 import { SyncJobPayload } from '@mycase-hubspot/shared-types';
 import { InstallationService } from '../installation/installation.service';
 import { MyCaseClientService } from './mycase-client.service';
-import {
-  QUEUE_MC_TO_HS,
-  SYNC_JOB_OPTIONS,
-} from '../queue/queue.constants';
+import { PgBossService } from '../queue/pg-boss.service';
+import { QUEUE_MC_TO_HS, SYNC_JOB_OPTS } from '../queue/queue.constants';
 
 @Injectable()
 export class MyCasePollerService {
@@ -19,7 +15,7 @@ export class MyCasePollerService {
   private isRunning = false;
 
   constructor(
-    @InjectQueue(QUEUE_MC_TO_HS) private readonly queue: Queue<SyncJobPayload>,
+    private readonly pgBoss: PgBossService,
     @InjectRepository(PollingCursor)
     private readonly cursorRepo: Repository<PollingCursor>,
     private readonly installationService: InstallationService,
@@ -92,9 +88,9 @@ export class MyCasePollerService {
           triggeredBy: 'poll',
         };
 
-        await this.queue.add(`${syncObjectType}-${record.id}`, payload, {
-          ...SYNC_JOB_OPTIONS,
-          jobId: `mc.poll.${installationId}.${syncObjectType}.${record.id}.${pollStart.getTime()}`,
+        await this.pgBoss.send(QUEUE_MC_TO_HS, payload as object, {
+          ...SYNC_JOB_OPTS,
+          singletonKey: `mc.poll.${installationId}.${syncObjectType}.${record.id}.${pollStart.getTime()}`,
         });
       }
 

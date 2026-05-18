@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import PgBoss from 'pg-boss';
 import {
   SyncJobPayload,
   SyncResult,
@@ -11,7 +11,7 @@ import { SyncLockService } from './sync-lock.service';
 import { SyncJobService } from './sync-job.service';
 import { InstallationService } from '../installation/installation.service';
 import { ErrorLogService } from '../error-log/error-log.service';
-import { SYNC_JOB_OPTIONS } from '../queue/queue.constants';
+import { SYNC_JOB_MAX_ATTEMPTS } from '../queue/queue.constants';
 import { ContactToClientProcessor } from './processors/contact-to-client.processor';
 import { ClientToContactProcessor } from './processors/client-to-contact.processor';
 import { DealToMatterProcessor } from './processors/deal-to-matter.processor';
@@ -46,12 +46,12 @@ export class SyncOrchestrator {
     ];
   }
 
-  async handle(job: Job<SyncJobPayload>): Promise<SyncResult> {
+  async handle(job: PgBoss.JobWithMetadata<SyncJobPayload>): Promise<SyncResult> {
     const payload = job.data;
     const { installationId, objectType, direction, sourceId } = payload;
-    payload.attempt = job.attemptsMade + 1;
+    payload.attempt = (job.retryCount ?? 0) + 1;
 
-    const maxAttempts = job.opts.attempts ?? SYNC_JOB_OPTIONS.attempts;
+    const maxAttempts = SYNC_JOB_MAX_ATTEMPTS;
     const isFinalAttempt = payload.attempt >= maxAttempts;
 
     this.logger.log(

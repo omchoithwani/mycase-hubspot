@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { ErrorLog } from '@mycase-hubspot/db';
-import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS, SYNC_JOB_OPTIONS } from '../queue/queue.constants';
+import { PgBossService } from '../queue/pg-boss.service';
+import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS, SYNC_JOB_OPTS } from '../queue/queue.constants';
+import { SyncJobPayload } from '@mycase-hubspot/shared-types';
 
 export interface ErrorLogInput {
   installationId: string;
@@ -22,10 +22,7 @@ export class ErrorLogService {
   constructor(
     @InjectRepository(ErrorLog)
     private readonly repo: Repository<ErrorLog>,
-    @InjectQueue(QUEUE_HS_TO_MC)
-    private readonly hsToMcQueue: Queue,
-    @InjectQueue(QUEUE_MC_TO_HS)
-    private readonly mcToHsQueue: Queue,
+    private readonly pgBoss: PgBossService,
   ) {}
 
   async log(data: ErrorLogInput): Promise<ErrorLog> {
@@ -60,8 +57,6 @@ export class ErrorLogService {
     });
   }
 
-  /** Log a non-blocking warning (field mismatch etc.) — marked resolved so it
-   *  doesn't appear as an actionable error but is still queryable. */
   async logWarning(data: ErrorLogInput): Promise<ErrorLog> {
     const entry = this.repo.create({
       installationId: data.installationId,
@@ -78,7 +73,6 @@ export class ErrorLogService {
     return this.repo.save(entry);
   }
 
-  /** Returns unresolved FIELD_MISMATCH warnings for a specific record. */
   async findMismatchesBySourceId(
     installationId: string,
     sourceId: string,
@@ -90,7 +84,6 @@ export class ErrorLogService {
     });
   }
 
-  /** Clears all FIELD_MISMATCH warnings for a record (called when a clean sync succeeds). */
   async clearMismatches(installationId: string, sourceId: string): Promise<void> {
     await this.repo.update(
       { installationId, sourceId, errorCode: 'FIELD_MISMATCH' },
@@ -105,17 +98,19 @@ export class ErrorLogService {
   async retry(id: string, installationId: string): Promise<void> {
     const log = await this.repo.findOneOrFail({ where: { id, installationId } });
 
-    const payload = {
+    const payload: SyncJobPayload = {
       installationId: log.installationId,
-      objectType: log.objectType,
-      direction: log.direction,
+      objectType: log.objectType as any,
+      direction: log.direction as any,
       sourceId: log.sourceId,
+      sourceSystem: log.direction === 'hs_to_mc' ? 'hubspot' : 'mycase',
+      triggeredBy: 'manual',
     };
 
-    const queue = log.direction === 'hs_to_mc' ? this.hsToMcQueue : this.mcToHsQueue;
-    await queue.add('sync', payload, {
-      ...SYNC_JOB_OPTIONS,
-      jobId: `retry:${log.id}:${Date.now()}`,
+    const queueName = log.direction === 'hs_to_mc' ? QUEUE_HS_TO_MC : QUEUE_MC_TO_HS;
+    await this.pgBoss.send(queueName, payload as object, {
+      ...SYNC_JOB_OPTS,
+      singletonKey: `retry:${log.id}:${Date.now()}`,
     });
 
     await this.repo.update({ id }, {

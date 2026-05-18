@@ -1,14 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PollingCursor } from '@mycase-hubspot/db';
 import { SyncJobPayload } from '@mycase-hubspot/shared-types';
 import { InstallationService } from '../installation/installation.service';
 import { HubSpotClientService } from './hubspot-client.service';
-import { QUEUE_HS_TO_MC, SYNC_JOB_OPTIONS } from '../queue/queue.constants';
+import { PgBossService } from '../queue/pg-boss.service';
+import { QUEUE_HS_TO_MC, SYNC_JOB_OPTS } from '../queue/queue.constants';
 
 @Injectable()
 export class HubSpotPollerService {
@@ -16,7 +15,7 @@ export class HubSpotPollerService {
   private readonly running = { contact: false, deal: false, note: false };
 
   constructor(
-    @InjectQueue(QUEUE_HS_TO_MC) private readonly queue: Queue<SyncJobPayload>,
+    private readonly pgBoss: PgBossService,
     @InjectRepository(PollingCursor)
     private readonly cursorRepo: Repository<PollingCursor>,
     private readonly installationService: InstallationService,
@@ -88,9 +87,9 @@ export class HubSpotPollerService {
           triggeredBy: 'poll',
         };
 
-        await this.queue.add(`${objectType}-${record.id}`, payload, {
-          ...SYNC_JOB_OPTIONS,
-          jobId: `hs.poll.${installationId}.${objectType}.${record.id}.${pollStart.getTime()}`,
+        await this.pgBoss.send(QUEUE_HS_TO_MC, payload as object, {
+          ...SYNC_JOB_OPTS,
+          singletonKey: `hs.poll.${installationId}.${objectType}.${record.id}.${pollStart.getTime()}`,
         });
       }
 

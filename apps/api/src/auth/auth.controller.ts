@@ -5,10 +5,8 @@ import {
   Redirect,
   Logger,
   BadRequestException,
-  Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
 import { randomBytes } from 'crypto';
 import { HubSpotOAuthService } from './hubspot-oauth.service';
 import { MyCaseOAuthService } from './mycase-oauth.service';
@@ -18,11 +16,14 @@ import { MyCaseClientService } from '../mycase/mycase-client.service';
 import { FieldMappingService } from '../field-mapping/field-mapping.service';
 import { StageMappingService } from '../stage-mapping/stage-mapping.service';
 
-const CSRF_TTL_SECONDS = 600; // 10 minutes
+const CSRF_TTL_MS = 600_000; // 10 minutes
 
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
+
+  // In-memory CSRF store: key → expiresAt (epoch ms)
+  private readonly csrfStore = new Map<string, number>();
 
   constructor(
     private readonly hubspotOAuth: HubSpotOAuthService,
@@ -33,7 +34,6 @@ export class AuthController {
     private readonly fieldMapping: FieldMappingService,
     private readonly stageMapping: StageMappingService,
     private readonly config: ConfigService,
-    @Inject('REDIS_CLIENT') private readonly redis: Redis,
   ) {}
 
   // ─── HubSpot Install ──────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ export class AuthController {
   @Redirect()
   async hubspotInstall() {
     const state = randomBytes(16).toString('hex');
-    await this.redis.setex(`csrf:hs:${state}`, CSRF_TTL_SECONDS, '1');
+    this.setCsrf(`csrf:hs:${state}`, state);
     const url = this.hubspotOAuth.buildAuthUrl(state);
     return { url };
   }
@@ -59,17 +59,10 @@ export class AuthController {
       throw new BadRequestException(`OAuth denied: ${error}`);
     }
 
-    // CSRF check
-    const valid = await this.redis.get(`csrf:hs:${state}`);
-    if (!valid) {
-      throw new BadRequestException('Invalid or expired state parameter');
-    }
-    await this.redis.del(`csrf:hs:${state}`);
+    this.checkAndDeleteCsrf(`csrf:hs:${state}`);
 
-    // Exchange code for tokens
     const tokens = await this.hubspotOAuth.exchangeCode(code);
 
-    // Persist installation
     const installation = await this.installationService.upsertFromHubSpot({
       portalId: tokens.portalId,
       accessToken: tokens.accessToken,
@@ -77,7 +70,6 @@ export class AuthController {
       expiresAt: tokens.expiresAt,
     });
 
-    // Subscribe webhooks + create custom properties (best effort)
     try {
       const accessToken = await this.hubspotOAuth.getValidAccessToken(installation);
       await Promise.all([
@@ -88,7 +80,6 @@ export class AuthController {
       this.logger.warn('Non-fatal: webhook/property setup failed', err);
     }
 
-    // Fetch pipelines and seed stage mappings (best effort)
     try {
       const pipelines = await this.hubspot.getPipelines(
         installation.hubspotPortalId,
@@ -98,13 +89,6 @@ export class AuthController {
     } catch (err) {
       this.logger.warn('Non-fatal: stage mapping seed failed', err);
     }
-
-    // Store installation ID in Redis for the MyCase connect step
-    await this.redis.setex(
-      `install:pending:${installation.hubspotPortalId}`,
-      3600,
-      installation.id,
-    );
 
     const webUrl = this.config.get<string>('WEB_URL') || 'http://localhost:3000';
     return { url: `${webUrl}/install?installationId=${installation.id}` };
@@ -120,7 +104,7 @@ export class AuthController {
     }
 
     const state = `${installationId}:${randomBytes(12).toString('hex')}`;
-    await this.redis.setex(`csrf:mc:${state}`, CSRF_TTL_SECONDS, installationId);
+    this.setCsrf(`csrf:mc:${state}`, installationId);
 
     const url = this.mycaseOAuth.buildAuthUrl(state);
     return { url };
@@ -142,12 +126,13 @@ export class AuthController {
       throw new BadRequestException('Missing authorization code from MyCase');
     }
 
-    // CSRF check — state contains installationId
-    const installationId = await this.redis.get(`csrf:mc:${state}`);
+    // State was set as `installationId:nonce`
+    const installationId = state.split(':')[0];
+    this.checkAndDeleteCsrf(`csrf:mc:${state}`);
+
     if (!installationId) {
       throw new BadRequestException('Invalid or expired state parameter');
     }
-    await this.redis.del(`csrf:mc:${state}`);
 
     const tokens = await this.mycaseOAuth.exchangeCode(code);
 
@@ -157,7 +142,6 @@ export class AuthController {
       expiresAt: tokens.expiresAt,
     });
 
-    // Fetch firm's web portal URL so CRM card links go to the right subdomain
     try {
       const firmWebBase = await this.mycase.getFirmWebBaseUrl(installationId);
       if (firmWebBase) {
@@ -168,14 +152,12 @@ export class AuthController {
       this.logger.warn(`Non-fatal: could not fetch MyCase firm web URL: ${err.message}`);
     }
 
-    // Seed default field mappings now that both systems are connected (best effort)
     try {
       await this.fieldMapping.seedDefaults(installationId);
     } catch (err) {
       this.logger.warn('Non-fatal: field mapping seed failed', err);
     }
 
-    // Subscribe to MyCase webhooks so we get real-time updates (best effort)
     try {
       const apiUrl = this.config.get<string>('API_URL') ?? '';
       if (apiUrl) {
@@ -194,5 +176,26 @@ export class AuthController {
 
     const webUrl = this.config.get<string>('WEB_URL') || 'http://localhost:3000';
     return { url: `${webUrl}/install?installationId=${installationId}&step=done` };
+  }
+
+  // ─── CSRF helpers ─────────────────────────────────────────────────────────
+
+  private setCsrf(key: string, _value: string): void {
+    // Periodically prune expired entries to avoid unbounded growth
+    if (this.csrfStore.size > 1000) {
+      const now = Date.now();
+      for (const [k, exp] of this.csrfStore) {
+        if (exp <= now) this.csrfStore.delete(k);
+      }
+    }
+    this.csrfStore.set(key, Date.now() + CSRF_TTL_MS);
+  }
+
+  private checkAndDeleteCsrf(key: string): void {
+    const expiresAt = this.csrfStore.get(key);
+    this.csrfStore.delete(key);
+    if (!expiresAt || Date.now() > expiresAt) {
+      throw new BadRequestException('Invalid or expired state parameter');
+    }
   }
 }

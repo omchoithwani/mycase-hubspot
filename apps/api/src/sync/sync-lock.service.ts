@@ -1,53 +1,29 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
-import Redis from 'ioredis';
+import { Injectable, Logger } from '@nestjs/common';
 import { SyncDirection, ObjectType } from '@mycase-hubspot/shared-types';
 
 const LOCK_TTL_MS = 30_000;
 
 /**
- * Redis-backed distributed lock for sync loop prevention.
+ * In-memory distributed lock for sync loop prevention.
+ * Safe for single-instance deployments (Fly.io single machine).
  *
- * Key format:  sync:lock:{installationId}:{objectType}:{objectId}
- * Value:       direction ('hs_to_mc' | 'mc_to_hs')
+ * Key: installationId:objectType:objectId
+ * Value: { direction, expiresAt }
  *
  * Two-layer strategy:
- *   1. If no lock exists → set and proceed.
- *   2. If a lock for the SAME direction exists → another worker is
- *      already processing this record; skip (deduplication).
- *   3. If a lock for the OPPOSITE direction exists → this is a sync
- *      loop triggered by the destination writing back; skip.
+ *   1. No lock → acquire and proceed.
+ *   2. Same direction → duplicate worker; skip.
+ *   3. Opposite direction → sync loop triggered by destination write; skip.
  */
-
-const LOCK_KEY = (
-  installationId: string,
-  objectType: ObjectType,
-  objectId: string,
-) => `sync:lock:${installationId}:${objectType}:${objectId}`;
-
-/** Lua: SET NX PX — returns 1 if acquired, 0 if already held */
-const ACQUIRE_SCRIPT = `
-local key   = KEYS[1]
-local value = ARGV[1]
-local ttl   = tonumber(ARGV[2])
-local existing = redis.call('GET', key)
-if existing == false then
-  redis.call('SET', key, value, 'PX', ttl)
-  return 1
-end
-return 0
-`;
-
 @Injectable()
 export class SyncLockService {
   private readonly logger = new Logger(SyncLockService.name);
+  private readonly locks = new Map<string, { direction: string; expiresAt: number }>();
 
-  constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
+  private key(installationId: string, objectType: ObjectType, objectId: string): string {
+    return `${installationId}:${objectType}:${objectId}`;
+  }
 
-  /**
-   * Attempt to acquire a sync lock.
-   * Returns true if the lock was acquired, false if another lock exists
-   * (same or opposite direction — caller should skip the job).
-   */
   async acquireLock(
     installationId: string,
     objectType: ObjectType,
@@ -55,14 +31,14 @@ export class SyncLockService {
     direction: SyncDirection,
     ttlMs: number = LOCK_TTL_MS,
   ): Promise<boolean> {
-    const key = LOCK_KEY(installationId, objectType, objectId);
+    const key = this.key(installationId, objectType, objectId);
+    const now = Date.now();
+    const existing = this.locks.get(key);
 
-    // Check current holder first (cheap GET before the Lua eval)
-    const existing = await this.redis.get(key);
-    if (existing !== null) {
-      if (existing !== direction) {
+    if (existing && existing.expiresAt > now) {
+      if (existing.direction !== direction) {
         this.logger.debug(
-          `Loop detected: ${objectType}/${objectId} locked by ${existing}, current direction ${direction} — skipping`,
+          `Loop detected: ${objectType}/${objectId} locked by ${existing.direction}, current ${direction} — skipping`,
         );
       } else {
         this.logger.debug(
@@ -72,20 +48,9 @@ export class SyncLockService {
       return false;
     }
 
-    const acquired = await (this.redis as any).eval(
-      ACQUIRE_SCRIPT,
-      1,
-      key,
-      direction,
-      ttlMs,
-    ) as number;
-
-    if (acquired === 1) {
-      this.logger.verbose(`Lock acquired: ${key} → ${direction}`);
-      return true;
-    }
-
-    return false;
+    this.locks.set(key, { direction, expiresAt: now + ttlMs });
+    this.logger.verbose(`Lock acquired: ${key} → ${direction}`);
+    return true;
   }
 
   async releaseLock(
@@ -93,8 +58,8 @@ export class SyncLockService {
     objectType: ObjectType,
     objectId: string,
   ): Promise<void> {
-    const key = LOCK_KEY(installationId, objectType, objectId);
-    await this.redis.del(key);
+    const key = this.key(installationId, objectType, objectId);
+    this.locks.delete(key);
     this.logger.verbose(`Lock released: ${key}`);
   }
 
@@ -103,6 +68,9 @@ export class SyncLockService {
     objectType: ObjectType,
     objectId: string,
   ): Promise<string | null> {
-    return this.redis.get(LOCK_KEY(installationId, objectType, objectId));
+    const key = this.key(installationId, objectType, objectId);
+    const existing = this.locks.get(key);
+    if (existing && existing.expiresAt > Date.now()) return existing.direction;
+    return null;
   }
 }

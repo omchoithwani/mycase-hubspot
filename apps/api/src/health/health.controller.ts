@@ -1,30 +1,18 @@
-import { Controller, Get, Inject } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import Redis from 'ioredis';
 
 @Controller('health')
 export class HealthController {
-  constructor(
-    @InjectDataSource() private readonly dataSource: DataSource,
-    @Inject('REDIS_CLIENT') private readonly redis: Redis,
-  ) {}
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   @Get()
   async check() {
-    const [db, redisOk] = await Promise.all([
-      this.checkDb(),
-      this.checkRedis(),
-    ]);
-
-    const allOk = db && redisOk;
+    const db = await this.checkDb();
     return {
-      status: allOk ? 'ok' : 'degraded',
+      status: db ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
-      services: {
-        database: db ? 'ok' : 'error',
-        redis: redisOk ? 'ok' : 'error',
-      },
+      services: { database: db ? 'ok' : 'error' },
     };
   }
 
@@ -32,15 +20,6 @@ export class HealthController {
     try {
       await this.dataSource.query('SELECT 1');
       return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private async checkRedis(): Promise<boolean> {
-    try {
-      const pong = await this.redis.ping();
-      return pong === 'PONG';
     } catch {
       return false;
     }

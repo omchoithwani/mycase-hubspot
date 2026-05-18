@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { InstallationService } from '../installation/installation.service';
 import { HubSpotClientService } from '../hubspot/hubspot-client.service';
 import { MyCaseClientService } from '../mycase/mycase-client.service';
-import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS, SYNC_JOB_OPTIONS } from '../queue/queue.constants';
+import { PgBossService } from '../queue/pg-boss.service';
+import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS, SYNC_JOB_OPTS } from '../queue/queue.constants';
 import { SyncJobPayload } from '@mycase-hubspot/shared-types';
 
 @Injectable()
@@ -15,8 +14,7 @@ export class InitialSyncService {
     private readonly installationService: InstallationService,
     private readonly hubspot: HubSpotClientService,
     private readonly mycase: MyCaseClientService,
-    @InjectQueue(QUEUE_HS_TO_MC) private readonly hsToMcQueue: Queue,
-    @InjectQueue(QUEUE_MC_TO_HS) private readonly mcToHsQueue: Queue,
+    private readonly pgBoss: PgBossService,
   ) {}
 
   async triggerSingleRecord(
@@ -26,10 +24,10 @@ export class InitialSyncService {
     direction: 'hs_to_mc' | 'mc_to_hs',
     force = false,
   ): Promise<void> {
-    const queue = direction === 'hs_to_mc' ? this.hsToMcQueue : this.mcToHsQueue;
+    const queueName = direction === 'hs_to_mc' ? QUEUE_HS_TO_MC : QUEUE_MC_TO_HS;
     const sourceSystem = direction === 'hs_to_mc' ? 'hubspot' : 'mycase';
-    await queue.add(
-      'sync',
+    await this.pgBoss.send(
+      queueName,
       {
         installationId,
         objectType,
@@ -40,8 +38,8 @@ export class InitialSyncService {
         force,
       } as SyncJobPayload,
       {
-        ...SYNC_JOB_OPTIONS,
-        jobId: `force.${objectType}.${recordId}.${Date.now()}`,
+        ...SYNC_JOB_OPTS,
+        singletonKey: `force.${objectType}.${recordId}.${Date.now()}`,
       },
     );
     this.logger.log(`Force-sync enqueued: ${direction} ${objectType}/${recordId}`);
@@ -78,9 +76,9 @@ export class InitialSyncService {
           : await this.hubspot.listDealsPage(portalId, installationId, after);
 
       if (page.results.length > 0) {
-        await this.hsToMcQueue.addBulk(
+        await this.pgBoss.insert(
           page.results.map((obj) => ({
-            name: 'sync',
+            name: QUEUE_HS_TO_MC,
             data: {
               installationId,
               objectType,
@@ -89,10 +87,8 @@ export class InitialSyncService {
               sourceSystem: 'hubspot',
               triggeredBy: 'manual',
             } as SyncJobPayload,
-            opts: {
-              ...SYNC_JOB_OPTIONS,
-              jobId: `initial:${objectType}:${obj.id}`,
-            },
+            ...SYNC_JOB_OPTS,
+            singletonKey: `initial:${objectType}:${obj.id}`,
           })),
         );
         count += page.results.length;
@@ -108,9 +104,9 @@ export class InitialSyncService {
     const clients = await this.mycase.listClients(installationId);
     if (clients.length === 0) return 0;
 
-    await this.mcToHsQueue.addBulk(
+    await this.pgBoss.insert(
       clients.map((c) => ({
-        name: 'sync',
+        name: QUEUE_MC_TO_HS,
         data: {
           installationId,
           objectType: 'contact',
@@ -119,10 +115,8 @@ export class InitialSyncService {
           sourceSystem: 'mycase',
           triggeredBy: 'manual',
         } as SyncJobPayload,
-        opts: {
-          ...SYNC_JOB_OPTIONS,
-          jobId: `initial:mc_client:${c.id}`,
-        },
+        ...SYNC_JOB_OPTS,
+        singletonKey: `initial:mc_client:${c.id}`,
       })),
     );
     return clients.length;
@@ -132,9 +126,9 @@ export class InitialSyncService {
     const matters = await this.mycase.listMatters(installationId);
     if (matters.length === 0) return 0;
 
-    await this.mcToHsQueue.addBulk(
+    await this.pgBoss.insert(
       matters.map((m) => ({
-        name: 'sync',
+        name: QUEUE_MC_TO_HS,
         data: {
           installationId,
           objectType: 'deal',
@@ -143,10 +137,8 @@ export class InitialSyncService {
           sourceSystem: 'mycase',
           triggeredBy: 'manual',
         } as SyncJobPayload,
-        opts: {
-          ...SYNC_JOB_OPTIONS,
-          jobId: `initial:mc_matter:${m.id}`,
-        },
+        ...SYNC_JOB_OPTS,
+        singletonKey: `initial:mc_matter:${m.id}`,
       })),
     );
     return matters.length;

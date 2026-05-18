@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { BullModule } from '@nestjs/bullmq';
 import { SyncRecord, SyncJob, PollingCursor } from '@mycase-hubspot/db';
 import { SyncLockService } from './sync-lock.service';
 import { SyncRecordService } from './sync-record.service';
 import { SyncJobService } from './sync-job.service';
 import { SyncOrchestrator } from './sync-orchestrator.service';
-import { SyncHsToMcConsumer, SyncMcToHsConsumer } from './sync-job.consumer';
+import { SyncJobConsumer } from './sync-job.consumer';
 import { ContactToClientProcessor } from './processors/contact-to-client.processor';
 import { ClientToContactProcessor } from './processors/client-to-contact.processor';
 import { DealToMatterProcessor } from './processors/deal-to-matter.processor';
@@ -23,15 +22,9 @@ import { SyncCriteriaModule } from '../sync-criteria/sync-criteria.module';
 import { ErrorLogModule } from '../error-log/error-log.module';
 import { SyncJobController } from './sync-job.controller';
 import { InitialSyncService } from './initial-sync.service';
-import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
-
 @Module({
   imports: [
     TypeOrmModule.forFeature([SyncRecord, SyncJob, PollingCursor]),
-    BullModule.registerQueue(
-      { name: QUEUE_HS_TO_MC },
-      { name: QUEUE_MC_TO_HS },
-    ),
     HubSpotModule,
     MyCaseModule,
     InstallationModule,
@@ -53,10 +46,9 @@ import { QUEUE_HS_TO_MC, QUEUE_MC_TO_HS } from '../queue/queue.constants';
     MatterToDealProcessor,
     HsNoteToMcNoteProcessor,
     McNoteToHsNoteProcessor,
-    // Orchestrator + consumers
+    // Orchestrator + consumer
     SyncOrchestrator,
-    SyncHsToMcConsumer,
-    SyncMcToHsConsumer,
+    SyncJobConsumer,
     InitialSyncService,
   ],
   exports: [SyncRecordService, SyncJobService, InitialSyncService],

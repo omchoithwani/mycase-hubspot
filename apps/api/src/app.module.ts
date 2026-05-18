@@ -9,7 +9,6 @@ import * as Joi from 'joi';
 import { AuthModule } from './auth/auth.module';
 import { InstallationModule } from './installation/installation.module';
 import { HealthModule } from './health/health.module';
-import { RedisModule } from './common/redis.module';
 import { HubSpotModule } from './hubspot/hubspot.module';
 import { MyCaseModule } from './mycase/mycase.module';
 import { QueueModule } from './queue/queue.module';
@@ -32,7 +31,6 @@ import { CrmCardModule } from './crm-card/crm-card.module';
         APP_URL: Joi.string().required(),
         WEB_URL: Joi.string().required(),
         DATABASE_URL: Joi.string().required(),
-        REDIS_URL: Joi.string().required(),
         ENCRYPTION_KEY: Joi.string().length(64).required(),
         HUBSPOT_CLIENT_ID: Joi.string().required(),
         HUBSPOT_CLIENT_SECRET: Joi.string().required(),
@@ -76,7 +74,6 @@ import { CrmCardModule } from './crm-card/crm-card.module';
 
     ScheduleModule.forRoot(),
 
-    RedisModule,
     QueueModule,
     AuthModule,
     InstallationModule,

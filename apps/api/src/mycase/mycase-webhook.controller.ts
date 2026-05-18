@@ -5,18 +5,10 @@ import {
   Param,
   Logger,
   HttpCode,
-  Headers,
-  RawBodyRequest,
-  Req,
 } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { Request } from 'express';
 import { InstallationService } from '../installation/installation.service';
-import {
-  QUEUE_MC_TO_HS,
-  SYNC_JOB_OPTIONS,
-} from '../queue/queue.constants';
+import { PgBossService } from '../queue/pg-boss.service';
+import { QUEUE_MC_TO_HS, SYNC_JOB_OPTS } from '../queue/queue.constants';
 import { SyncJobPayload } from '@mycase-hubspot/shared-types';
 
 @Controller('webhooks/mycase')
@@ -24,19 +16,14 @@ export class MyCaseWebhookController {
   private readonly logger = new Logger(MyCaseWebhookController.name);
 
   constructor(
-    @InjectQueue(QUEUE_MC_TO_HS) private readonly queue: Queue<SyncJobPayload>,
+    private readonly pgBoss: PgBossService,
     private readonly installationService: InstallationService,
   ) {}
 
   /**
-   * MyCase webhook receiver — one endpoint per installation so we always
-   * know which installation a webhook belongs to without querying by firm_id.
-   *
+   * MyCase webhook receiver — one endpoint per installation.
    * Subscribed via POST /v1/webhooks/subscriptions with url =
    *   {API_URL}/webhooks/mycase/{installationId}
-   *
-   * Payload format (MyCase external integrations API):
-   *   { model: 'case' | 'client', action: 'created' | 'updated' | 'deleted', id: number, ... }
    */
   @Post(':installationId')
   @HttpCode(200)
@@ -44,7 +31,6 @@ export class MyCaseWebhookController {
     @Param('installationId') installationId: string,
     @Body() body: Record<string, any>,
   ): Promise<{ ok: boolean }> {
-    // Log raw payload on first receipt so we can verify the format
     this.logger.log(`MyCase webhook [${installationId.slice(0, 8)}]: ${JSON.stringify(body)}`);
 
     const model: string | undefined = body.model ?? body.object_type;
@@ -57,7 +43,6 @@ export class MyCaseWebhookController {
       return { ok: true };
     }
 
-    // Verify installation exists and is active
     try {
       await this.installationService.findByIdOrFail(installationId);
     } catch {
@@ -96,9 +81,9 @@ export class MyCaseWebhookController {
       triggeredBy: 'webhook',
     };
 
-    await this.queue.add(`${objectType}-${sourceId}`, payload, {
-      ...SYNC_JOB_OPTIONS,
-      jobId: `mc:${installationId}:${objectType}:${sourceId}:${Date.now()}`,
+    await this.pgBoss.send(QUEUE_MC_TO_HS, payload as object, {
+      ...SYNC_JOB_OPTS,
+      singletonKey: `mc:${installationId}:${objectType}:${sourceId}:${Date.now()}`,
     });
 
     this.logger.log(`Enqueued mc_to_hs ${objectType}/${sourceId} via webhook`);

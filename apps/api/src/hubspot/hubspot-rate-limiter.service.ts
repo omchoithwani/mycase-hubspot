@@ -1,85 +1,47 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
-import Redis from 'ioredis';
+import { Injectable, Logger } from '@nestjs/common';
 
 /**
- * Redis-backed token bucket for HubSpot's marketplace rate limit:
+ * In-memory token bucket for HubSpot's marketplace rate limit:
  * 110 requests per 10 seconds (rolling window).
  *
- * Uses a Lua script for atomic read-and-decrement so multiple workers
- * (e.g. BullMQ consumers) share a single bucket without race conditions.
+ * Safe for single-instance deployments (Fly.io single machine).
  */
 
-const BUCKET_KEY = (portalId: string) => `hs:ratelimit:${portalId}`;
 const CAPACITY = 110;
 const WINDOW_MS = 10_000;
-
-/**
- * Lua script: atomically check and decrement the bucket.
- * Returns the current token count BEFORE decrement, or -1 if empty.
- */
-const ACQUIRE_SCRIPT = `
-local key = KEYS[1]
-local capacity = tonumber(ARGV[1])
-local now = tonumber(ARGV[2])
-local window = tonumber(ARGV[3])
-
--- Remove tokens older than the window
-redis.call('ZREMRANGEBYSCORE', key, '-inf', now - window)
-
-local count = redis.call('ZCARD', key)
-if count < capacity then
-  redis.call('ZADD', key, now, now .. '-' .. math.random(1000000))
-  redis.call('PEXPIRE', key, window)
-  return capacity - count - 1
-else
-  return -1
-end
-`;
 
 @Injectable()
 export class HubSpotRateLimiterService {
   private readonly logger = new Logger(HubSpotRateLimiterService.name);
+  private readonly windows = new Map<string, number[]>();
 
-  constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
-
-  /**
-   * Acquire a token for the given portal. Waits with exponential backoff
-   * if the bucket is empty, up to maxWaitMs total.
-   */
   async acquire(portalId: string, maxWaitMs = 30_000): Promise<void> {
-    const key = BUCKET_KEY(portalId);
     const deadline = Date.now() + maxWaitMs;
-    let attempt = 0;
 
     while (Date.now() < deadline) {
-      const remaining = await (this.redis as any).eval(
-        ACQUIRE_SCRIPT,
-        1,
-        key,
-        CAPACITY,
-        Date.now(),
-        WINDOW_MS,
-      ) as number;
+      const now = Date.now();
+      if (!this.windows.has(portalId)) this.windows.set(portalId, []);
+      const ts = this.windows.get(portalId)!;
 
-      if (remaining >= 0) {
-        return; // token acquired
+      // Drop timestamps outside the rolling window
+      const cutoff = now - WINDOW_MS;
+      while (ts.length > 0 && ts[0] <= cutoff) ts.shift();
+
+      if (ts.length < CAPACITY) {
+        ts.push(now);
+        return;
       }
 
-      // Bucket full — back off and retry
-      attempt++;
-      const delay = Math.min(200 * attempt, 2_000);
+      // Wait until the oldest entry rolls out of the window
+      const waitMs = Math.min(ts[0] + WINDOW_MS - now + 1, 500);
       this.logger.verbose(
-        `Rate limit bucket full for portal ${portalId}, waiting ${delay}ms (attempt ${attempt})`,
+        `Rate limit bucket full for portal ${portalId}, waiting ${waitMs}ms`,
       );
-      await this.sleep(delay);
+      await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
     }
 
     throw new Error(
       `HubSpot rate limit: could not acquire token for portal ${portalId} within ${maxWaitMs}ms`,
     );
-  }
-
-  private sleep(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
