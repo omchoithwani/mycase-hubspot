@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      - claude/hubspot-mycase-sync-app-pnSnW
+  workflow_dispatch:
 
 jobs:
   deploy:
