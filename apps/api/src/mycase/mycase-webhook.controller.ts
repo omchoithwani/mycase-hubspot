@@ -33,10 +33,12 @@ export class MyCaseWebhookController {
   ): Promise<{ ok: boolean }> {
     this.logger.log(`MyCase webhook [${installationId.slice(0, 8)}]: ${JSON.stringify(body)}`);
 
-    const model: string | undefined = body.model ?? body.object_type;
+    // Support both the legacy flat format and the newer nested format:
+    //   { resource: "Case", action: "updated", resource_body: { id: 123, ... } }
+    const model: string | undefined = body.resource ?? body.model ?? body.object_type;
     const action: string | undefined = body.action ?? body.event;
     const id: string | number | undefined =
-      body.id ?? body.case_id ?? body.contact_id ?? body.object_id;
+      body.resource_body?.id ?? body.id ?? body.case_id ?? body.contact_id ?? body.object_id;
 
     if (!id) {
       this.logger.warn(`MyCase webhook: no id in payload — ${JSON.stringify(body)}`);
@@ -52,11 +54,11 @@ export class MyCaseWebhookController {
 
     const sourceId = String(id);
 
-    if (model === 'case' || model === 'deal' || body.case_id) {
+    if (model === 'Case' || model === 'case' || model === 'deal' || body.case_id) {
       if (action !== 'deleted') {
         await this.enqueue(installationId, 'deal', sourceId);
       }
-    } else if (model === 'client' || model === 'contact' || body.contact_id) {
+    } else if (model === 'Client' || model === 'client' || model === 'contact' || body.contact_id) {
       if (action !== 'deleted') {
         await this.enqueue(installationId, 'contact', sourceId);
       }

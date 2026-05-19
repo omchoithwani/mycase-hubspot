@@ -202,9 +202,27 @@ export class DealToMatterProcessor extends BaseProcessor {
       action = 'created';
       this.logger.log(`Created MyCase matter ${mycaseId} from HubSpot deal ${sourceId}`);
     } else {
-      // Strip custom_field_values from updates — MyCase PUT appends rather than
-      // replaces them, causing duplicates on every sync run.
-      const { custom_field_values: _cfv, ...updateData } = matterData;
+      // Merge custom_field_values with existing ones to avoid duplicate entries.
+      // MyCase's PUT appends rather than replaces custom_field_values, so we must
+      // fetch current values, override the ones we're changing, and PUT the full set.
+      let updateData: Partial<McMatterInput> = { ...matterData };
+      if (customFieldValues.length > 0) {
+        try {
+          const currentMatter = await this.mycase.getMatter(installationId, mycaseId);
+          const cfvMap = new Map<number, McCustomFieldValue>();
+          for (const cfv of currentMatter.custom_field_values ?? []) {
+            cfvMap.set(cfv.custom_field.id, cfv);
+          }
+          for (const cfv of customFieldValues) {
+            cfvMap.set(cfv.custom_field.id, cfv);
+          }
+          updateData = { ...matterData, custom_field_values: Array.from(cfvMap.values()) };
+        } catch {
+          // If we can't fetch current state, strip CFs to avoid appending duplicates
+          const { custom_field_values: _cfv, ...safe } = matterData;
+          updateData = safe;
+        }
+      }
       try {
         await this.mycase.updateMatter(installationId, mycaseId, updateData);
       } catch (err: any) {

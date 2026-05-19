@@ -236,17 +236,34 @@ export class MatterToDealProcessor extends BaseProcessor {
     payload: Record<string, unknown>,
     mismatches: import('@mycase-hubspot/shared-types').FieldMismatch[],
   ): Record<string, unknown> | null {
-    if (err?.statusCode !== 422) return null;
-    const validationResults: any[] = err?.responseData?.validationResults ?? [];
-    const invalidFields = validationResults.filter((r) => !r.isValid).map((r) => r.name as string);
+    const status: number = err?.statusCode;
+    if (status !== 400 && status !== 422) return null;
+
+    // 422: uses validationResults array
+    if (status === 422) {
+      const validationResults: any[] = err?.responseData?.validationResults ?? [];
+      const invalidFields = validationResults.filter((r) => !r.isValid).map((r) => r.name as string);
+      if (invalidFields.length === 0) return null;
+      this.logger.warn(`HubSpot 422 — stripping [${invalidFields.join(', ')}] and retrying`);
+      for (const r of validationResults.filter((r) => !r.isValid)) {
+        mismatches.push({ field: r.name, droppedValue: payload[r.name], reason: r.message ?? 'Invalid value' });
+      }
+      const stripped = { ...payload };
+      invalidFields.forEach((f) => delete stripped[f]);
+      return stripped;
+    }
+
+    // 400 VALIDATION_ERROR: uses errors array with context.propertyName
+    const errors: any[] = err?.responseData?.errors ?? [];
+    const invalidFields = errors
+      .filter((e) => e.code === 'INVALID_OPTION' || e.code === 'INVALID_ENUM_VALUE')
+      .map((e) => (e.context?.propertyName?.[0] ?? e.name) as string)
+      .filter(Boolean);
     if (invalidFields.length === 0) return null;
-    this.logger.warn(`HubSpot 422 — stripping [${invalidFields.join(', ')}] and retrying`);
-    for (const r of validationResults.filter((r) => !r.isValid)) {
-      mismatches.push({
-        field: r.name,
-        droppedValue: payload[r.name],
-        reason: r.message ?? 'Invalid value',
-      });
+    this.logger.warn(`HubSpot 400 VALIDATION_ERROR — stripping [${invalidFields.join(', ')}] and retrying`);
+    for (const e of errors.filter((e) => e.code === 'INVALID_OPTION' || e.code === 'INVALID_ENUM_VALUE')) {
+      const field = e.context?.propertyName?.[0] ?? e.name;
+      if (field) mismatches.push({ field, droppedValue: payload[field], reason: e.message ?? 'Invalid enum value' });
     }
     const stripped = { ...payload };
     invalidFields.forEach((f) => delete stripped[f]);
