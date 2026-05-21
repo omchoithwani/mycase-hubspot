@@ -33,6 +33,7 @@ export interface SyncResult {
   reason?: string;
   errorCode?: string;
   fieldMismatches?: FieldMismatch[];
+  syncedData?: Record<string, unknown>;
 }
 
 export interface ISyncProcessor {

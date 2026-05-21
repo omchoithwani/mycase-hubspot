@@ -137,6 +137,6 @@ export class ClientToContactProcessor extends BaseProcessor {
       direction: 'mc_to_hs',
     });
 
-    return { success: true, action, destinationId: hubspotId };
+    return { success: true, action, destinationId: hubspotId, syncedData: contactData as Record<string, unknown> };
   }
 }

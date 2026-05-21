@@ -223,7 +223,7 @@ export class MatterToDealProcessor extends BaseProcessor {
       direction: 'mc_to_hs',
     });
 
-    return { success: true, action, destinationId: hubspotId, fieldMismatches };
+    return { success: true, action, destinationId: hubspotId, fieldMismatches, syncedData: dealData as Record<string, unknown> };
   }
 
   /**

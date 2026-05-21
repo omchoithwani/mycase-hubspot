@@ -254,7 +254,7 @@ export class DealToMatterProcessor extends BaseProcessor {
       this.logger.warn(`Could not write my_case_id back to deal ${sourceId}`);
     }
 
-    return { success: true, action, destinationId: mycaseId, fieldMismatches };
+    return { success: true, action, destinationId: mycaseId, fieldMismatches, syncedData: matterData as unknown as Record<string, unknown> };
   }
 
   /**

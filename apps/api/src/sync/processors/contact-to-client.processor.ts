@@ -210,6 +210,6 @@ export class ContactToClientProcessor extends BaseProcessor {
       this.logger.warn(`Could not write my_case_id back to contact ${sourceId}`);
     }
 
-    return { success: true, action, destinationId: mycaseId };
+    return { success: true, action, destinationId: mycaseId, syncedData: clientData as unknown as Record<string, unknown> };
   }
 }

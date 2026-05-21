@@ -27,11 +27,46 @@ export class SyncJobService {
   }
 
   async markSuccess(jobId: string, result: SyncResult): Promise<void> {
-    await this.repo.update(jobId, {
+    const update: Partial<SyncJob> = {
       status: 'success',
       destinationId: result.destinationId ?? null,
       completedAt: new Date(),
-    });
+    };
+
+    if (result.syncedData) {
+      update.payloadSnapshot = result.syncedData;
+
+      // Compute which fields changed vs the previous successful sync for this record
+      const current = await this.repo.findOneBy({ id: jobId });
+      if (current) {
+        const prev = await this.repo.findOne({
+          where: {
+            installationId: current.installationId,
+            sourceId: current.sourceId,
+            direction: current.direction,
+            status: 'success',
+          },
+          order: { createdAt: 'DESC' },
+        });
+
+        if (prev?.payloadSnapshot) {
+          const allKeys = new Set([
+            ...Object.keys(prev.payloadSnapshot),
+            ...Object.keys(result.syncedData),
+          ]);
+          update.changedFields = [...allKeys].filter(
+            (k) =>
+              JSON.stringify((prev.payloadSnapshot as Record<string, unknown>)[k]) !==
+              JSON.stringify((result.syncedData as Record<string, unknown>)[k]),
+          );
+        } else {
+          // First-ever sync for this record — all fields are "new"
+          update.changedFields = Object.keys(result.syncedData);
+        }
+      }
+    }
+
+    await this.repo.update(jobId, update as any);
   }
 
   async delete(jobId: string): Promise<void> {
@@ -56,8 +91,22 @@ export class SyncJobService {
 
   async list(
     installationId: string,
-    options: { status?: string; objectType?: string; limit?: number; offset?: number } = {},
+    options: { status?: string; objectType?: string; limit?: number; offset?: number; search?: string } = {},
   ): Promise<[SyncJob[], number]> {
+    if (options.search) {
+      const pattern = `%${options.search}%`;
+      const qb = this.repo
+        .createQueryBuilder('j')
+        .where('j.installation_id = :installationId', { installationId })
+        .andWhere('(j.source_id ILIKE :p OR j.destination_id ILIKE :p)', { p: pattern })
+        .orderBy('j.created_at', 'DESC')
+        .take(options.limit ?? 50)
+        .skip(options.offset ?? 0);
+      if (options.status) qb.andWhere('j.status = :status', { status: options.status });
+      if (options.objectType) qb.andWhere('j.object_type = :objectType', { objectType: options.objectType });
+      return qb.getManyAndCount();
+    }
+
     const where: Record<string, unknown> = { installationId };
     if (options.status) where['status'] = options.status;
     if (options.objectType) where['objectType'] = options.objectType;

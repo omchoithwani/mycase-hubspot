@@ -40,6 +40,9 @@ export class SyncJob {
   @Column({ name: 'payload_snapshot', type: 'jsonb', nullable: true })
   payloadSnapshot: Record<string, unknown> | null;
 
+  @Column({ name: 'changed_fields', type: 'jsonb', nullable: true })
+  changedFields: string[] | null;
+
   @Column({ name: 'error_message', type: 'text', nullable: true })
   errorMessage: string | null;
 

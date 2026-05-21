@@ -16,12 +16,14 @@ export class SyncJobController {
     @Query('objectType') objectType?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('search') search?: string,
   ) {
     const [data, total] = await this.service.list(installationId, {
       status,
       objectType,
       limit: limit ? Number(limit) : 50,
       offset: offset ? Number(offset) : 0,
+      search: search || undefined,
     });
     return { data, total };
   }
