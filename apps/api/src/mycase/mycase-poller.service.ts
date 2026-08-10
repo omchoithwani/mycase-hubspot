@@ -124,13 +124,20 @@ export class MyCasePollerService {
     });
 
     if (!cursor) {
-      // If syncHistoricalData is enabled, start from epoch to pull all records.
-      // Otherwise start from 24h ago so recent changes are always caught on first run.
       const lastPolledAt = syncHistoricalData
         ? new Date(0)
         : new Date(Date.now() - 24 * 60 * 60 * 1000);
-      cursor = this.cursorRepo.create({ installationId, objectType, lastPolledAt });
-      cursor = await this.cursorRepo.save(cursor);
+      try {
+        cursor = this.cursorRepo.create({ installationId, objectType, lastPolledAt });
+        cursor = await this.cursorRepo.save(cursor);
+      } catch (err: any) {
+        if (err?.code === '23505') {
+          // Another instance inserted concurrently — fetch the winner's row
+          cursor = await this.cursorRepo.findOneOrFail({ where: { installationId, objectType } });
+        } else {
+          throw err;
+        }
+      }
     }
 
     return cursor;

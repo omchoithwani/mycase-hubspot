@@ -114,12 +114,21 @@ export class HubSpotPollerService {
     let cursor = await this.cursorRepo.findOne({ where: { installationId, objectType } });
 
     if (!cursor) {
-      cursor = this.cursorRepo.create({
-        installationId,
-        objectType,
-        lastPolledAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      });
-      cursor = await this.cursorRepo.save(cursor);
+      try {
+        cursor = this.cursorRepo.create({
+          installationId,
+          objectType,
+          lastPolledAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        });
+        cursor = await this.cursorRepo.save(cursor);
+      } catch (err: any) {
+        if (err?.code === '23505') {
+          // Another instance inserted concurrently — fetch the winner's row
+          cursor = await this.cursorRepo.findOneOrFail({ where: { installationId, objectType } });
+        } else {
+          throw err;
+        }
+      }
     }
 
     return cursor;

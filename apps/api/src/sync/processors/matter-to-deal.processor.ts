@@ -174,11 +174,27 @@ export class MatterToDealProcessor extends BaseProcessor {
       try {
         created = await this.hubspot.createDeal(installation.hubspotPortalId, installationId, dealData);
       } catch (err: any) {
+        // HubSpot 400: my_case_id unique constraint — another deal already owns this ID
+        const existingId = this.extractExistingDealId(err);
+        if (existingId) {
+          this.logger.warn(
+            `matter-to-deal [${sourceId}]: my_case_id already on deal ${existingId} — linking instead of creating`,
+          );
+          await this.syncRecords.upsert({
+            installationId,
+            objectType: 'deal',
+            hubspotObjectId: existingId,
+            mycaseObjectId: sourceId,
+            payload: dealData as any,
+            direction: 'mc_to_hs',
+          });
+          return this.skip(`Linked to existing HubSpot deal (my_case_id match: ${existingId})`);
+        }
         const stripped = this.stripHubSpotInvalid(err, dealData as Record<string, unknown>, fieldMismatches);
         if (!stripped) throw err;
         created = await this.hubspot.createDeal(installation.hubspotPortalId, installationId, stripped as any);
       }
-      hubspotId = created.id;
+      hubspotId = created!.id;
       action = 'created';
       this.logger.log(`Created HubSpot deal ${hubspotId} from MyCase matter ${sourceId}`);
     } else {
@@ -224,6 +240,12 @@ export class MatterToDealProcessor extends BaseProcessor {
     });
 
     return { success: true, action, destinationId: hubspotId, fieldMismatches, syncedData: dealData as Record<string, unknown> };
+  }
+
+  private extractExistingDealId(err: any): string | null {
+    const msg: string = err?.responseData?.message ?? '';
+    const match = msg.match(/(\d+) already has that value/);
+    return match ? match[1] : null;
   }
 
   /**

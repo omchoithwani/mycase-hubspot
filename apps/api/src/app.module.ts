@@ -58,18 +58,23 @@ import { CrmCardModule } from './crm-card/crm-card.module';
 
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        url: config.get<string>('DATABASE_URL'),
-        ssl:
-          config.get('NODE_ENV') === 'production'
-            ? { rejectUnauthorized: false }
-            : false,
-        autoLoadEntities: true,
-        synchronize: false,
-        migrations: ['packages/db/dist/migrations/*.js'],
-        migrationsRun: true,
-      }),
+      useFactory: (config: ConfigService) => {
+        const dbUrl = config.get<string>('DATABASE_URL') ?? '';
+        const sslDisabled = dbUrl.includes('sslmode=disable');
+        return {
+          type: 'postgres',
+          url: dbUrl,
+          ssl: sslDisabled
+            ? false
+            : config.get('NODE_ENV') === 'production'
+              ? { rejectUnauthorized: false }
+              : false,
+          autoLoadEntities: true,
+          synchronize: false,
+          migrations: ['packages/db/dist/migrations/*.js'],
+          migrationsRun: true,
+        };
+      },
     }),
 
     ScheduleModule.forRoot(),
