@@ -13,10 +13,11 @@ export class PgBossService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {
+    const dbUrl = config.getOrThrow<string>('DATABASE_URL');
+    const sslDisabled = dbUrl.includes('sslmode=disable');
     this.boss = new PgBoss({
-      connectionString: config.getOrThrow<string>('DATABASE_URL'),
-      ssl: config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
-      // Poll every 5s instead of default 2s to reduce Neon serverless connection overhead
+      connectionString: dbUrl,
+      ssl: sslDisabled ? false : (config.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false),
       pollingIntervalSeconds: 5,
     });
     this.boss.on('error', (err: Error) =>
@@ -39,10 +40,20 @@ export class PgBossService implements OnModuleInit, OnModuleDestroy {
 
     // Verify the queue actually exists — pg-boss's createQueue can silently no-op
     // when its internal connection pool has issues with the Supabase session pooler.
-    const rows = await this.dataSource.query<{ name: string }[]>(
-      'SELECT name FROM pgboss.queue WHERE name = $1',
-      [name],
-    );
+    let rows: { name: string }[] = [];
+    try {
+      rows = await this.dataSource.query<{ name: string }[]>(
+        'SELECT name FROM pgboss.queue WHERE name = $1',
+        [name],
+      );
+    } catch (err: any) {
+      if (err?.code === '42P01') {
+        // pgboss schema not yet initialized (fresh DB) — boss.start() handles this
+        this.logger.warn(`pgboss schema not found during queue verification for "${name}" — skipping fallback`);
+        return;
+      }
+      throw err;
+    }
 
     if (rows.length === 0) {
       this.logger.warn(
