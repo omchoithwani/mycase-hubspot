@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { BaseProcessor } from './base.processor';
 import { SyncJobPayload, SyncResult } from '@mycase-hubspot/shared-types';
 import { HubSpotClientService } from '../../hubspot/hubspot-client.service';
@@ -33,8 +33,14 @@ export class McNoteToHsNoteProcessor extends BaseProcessor {
     const { installationId, sourceId } = payload;
     const installation = await this.installationService.findByIdOrFail(installationId);
 
-    // 1. Fetch note from MyCase
-    const note = await this.mycase.getNote(installationId, sourceId);
+    // 1. Fetch note from MyCase — skip if deleted
+    let note: Awaited<ReturnType<typeof this.mycase.getNote>>;
+    try {
+      note = await this.mycase.getNote(installationId, sourceId);
+    } catch (err) {
+      if (err instanceof NotFoundException) return this.skip('MyCase note not found (deleted)');
+      throw err;
+    }
 
     const rawBody = note.note ?? '';
     if (!rawBody) {

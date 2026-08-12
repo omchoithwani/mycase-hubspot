@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { BaseProcessor } from './base.processor';
 import { SyncJobPayload, SyncResult } from '@mycase-hubspot/shared-types';
 import { HubSpotClientService } from '../../hubspot/hubspot-client.service';
@@ -33,8 +33,14 @@ export class ClientToContactProcessor extends BaseProcessor {
     const { installationId, sourceId } = payload;
     const installation = await this.installationService.findByIdOrFail(installationId);
 
-    // 1. Fetch full client from MyCase
-    const client = await this.mycase.getClient(installationId, sourceId);
+    // 1. Fetch full client from MyCase — skip if deleted
+    let client: Awaited<ReturnType<typeof this.mycase.getClient>>;
+    try {
+      client = await this.mycase.getClient(installationId, sourceId);
+    } catch (err) {
+      if (err instanceof NotFoundException) return this.skip('MyCase client not found (deleted)');
+      throw err;
+    }
 
     // 2. Evaluate sync criteria
     const eligible = await this.syncCriteria.evaluate(
