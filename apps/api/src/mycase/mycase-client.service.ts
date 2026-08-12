@@ -396,7 +396,7 @@ export class MyCaseClientService {
     return this.call(installationId, (http) =>
       http
         .get(`/contacts/clients/${clientId}/court_cases`)
-        .then((r) => r.data.cases ?? r.data ?? []),
+        .then((r) => r.data.court_cases ?? r.data.cases ?? r.data ?? []),
     );
   }
 

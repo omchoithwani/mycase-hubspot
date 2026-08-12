@@ -115,10 +115,11 @@ export class MyCaseOAuthService {
       });
     } catch (err) {
       this.logger.error(
-        `Failed to refresh MyCase token for installation ${installation.id}`,
+        `Failed to refresh MyCase token for installation ${installation.id} — marking disconnected`,
         err,
       );
-      throw new UnauthorizedException('MyCase token refresh failed');
+      await this.installationService.setMyCaseDisconnected(installation.id);
+      throw new UnauthorizedException('MyCase token refresh failed — please reconnect MyCase');
     }
   }
 

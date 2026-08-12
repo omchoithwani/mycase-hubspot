@@ -67,12 +67,22 @@ export class InstallationService {
     installation.mycaseRefreshToken = data.refreshToken;
     installation.mycaseTokenExpiresAt = data.expiresAt;
     installation.mycaseConnected = true;
-    installation.mycaseBaseUrl = data.baseUrl ?? null;
+    if (data.baseUrl !== undefined) {
+      installation.mycaseBaseUrl = data.baseUrl;
+    }
     return this.repo.save(installation);
   }
 
   async updateMyCaseWebBaseUrl(id: string, webBaseUrl: string): Promise<void> {
     await this.repo.update(id, { mycaseWebBaseUrl: webBaseUrl });
+  }
+
+  async updateMyCaseBaseUrl(id: string, baseUrl: string): Promise<void> {
+    await this.repo.update(id, { mycaseBaseUrl: baseUrl });
+  }
+
+  async setMyCaseDisconnected(id: string): Promise<void> {
+    await this.repo.update(id, { mycaseConnected: false });
   }
 
   async updateHubSpotTokens(
