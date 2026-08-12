@@ -59,7 +59,7 @@ export class InstallationService {
       accessToken: string;
       refreshToken: string | null;
       expiresAt: Date;
-      baseUrl?: string;
+      baseUrl?: string | null;
     },
   ): Promise<Installation> {
     const installation = await this.findByIdOrFail(id);
@@ -67,6 +67,7 @@ export class InstallationService {
     installation.mycaseRefreshToken = data.refreshToken;
     installation.mycaseTokenExpiresAt = data.expiresAt;
     installation.mycaseConnected = true;
+    // undefined = don't touch (token refresh); null = explicit clear; string = set new value
     if (data.baseUrl !== undefined) {
       installation.mycaseBaseUrl = data.baseUrl;
     }

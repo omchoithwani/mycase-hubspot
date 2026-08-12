@@ -249,9 +249,27 @@ export class MatterToDealProcessor extends BaseProcessor {
   }
 
   private extractExistingDealId(err: any): string | null {
-    const msg: string = err?.responseData?.message ?? '';
-    const match = msg.match(/(\d+) already has that value/);
-    return match ? match[1] : null;
+    if (!err?.responseData) return null;
+    const data = err.responseData;
+
+    // Shape 1: { message: "... 12345 already has that value ..." }
+    const msgMatch = (data.message ?? '').match(/(\d+) already has that value/);
+    if (msgMatch) return msgMatch[1];
+
+    // Shape 2: { errors: [{ message, context: { value: ['12345'] } }] }
+    for (const e of data.errors ?? []) {
+      const val = e?.context?.value?.[0];
+      if (val && /^\d+$/.test(val)) return val;
+    }
+
+    // Shape 3: category=DUPLICATE_VALUE in errors array
+    for (const e of data.errors ?? []) {
+      const valMsg: string = e?.message ?? '';
+      const m = valMsg.match(/(\d+) already has that value/);
+      if (m) return m[1];
+    }
+
+    return null;
   }
 
   /**

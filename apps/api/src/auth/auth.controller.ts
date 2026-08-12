@@ -131,22 +131,21 @@ export class AuthController {
 
     const tokens = await this.mycaseOAuth.exchangeCode(code);
 
-    // Store tokens first (without baseUrl) so getFirmWebBaseUrl can make authenticated calls
+    // Store tokens; baseUrl: null explicitly clears any stale firm-specific API URL
+    // so buildClient falls back to the central external-integrations.mycase.com/v1 base
     await this.installationService.updateMyCaseTokens(installationId, {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
+      baseUrl: null,
     });
 
     try {
       const firmWebBase = await this.mycase.getFirmWebBaseUrl(installationId);
       if (firmWebBase) {
-        // Store web URL for CRM card links, and persist as API baseUrl in one write
-        await Promise.all([
-          this.installationService.updateMyCaseWebBaseUrl(installationId, firmWebBase),
-          this.installationService.updateMyCaseBaseUrl(installationId, firmWebBase),
-        ]);
-        this.logger.log(`Stored MyCase base URL: ${firmWebBase}`);
+        // Store web URL for CRM card links only — not used as API base
+        await this.installationService.updateMyCaseWebBaseUrl(installationId, firmWebBase);
+        this.logger.log(`Stored MyCase web base URL: ${firmWebBase}`);
       }
     } catch (err: any) {
       this.logger.warn(`Non-fatal: could not fetch MyCase firm web URL: ${err.message}`);

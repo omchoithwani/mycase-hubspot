@@ -256,12 +256,15 @@ export class DealToMatterProcessor extends BaseProcessor {
       });
     } catch (err: any) {
       if (err?.code === '23505') {
+        // Race: another concurrent job inserted the same row. The matter was
+        // already created or linked above, so this is safe to ignore — the
+        // winner's sync record is correct.
         this.logger.warn(
-          `deal-to-matter [${sourceId}]: MyCase matter ${mycaseId} already claimed by another deal — skipping sync record upsert`,
+          `deal-to-matter [${sourceId}]: sync record conflict (23505) — concurrent job won the race, continuing`,
         );
-        return this.skip(`MyCase matter ${mycaseId} already linked to another HubSpot deal`);
+      } else {
+        throw err;
       }
-      throw err;
     }
 
     try {
