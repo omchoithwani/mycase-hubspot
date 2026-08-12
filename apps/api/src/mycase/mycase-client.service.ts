@@ -162,7 +162,7 @@ export class MyCaseClientService {
 
   async getClient(installationId: string, clientId: string): Promise<McClient> {
     return this.call(installationId, (http) =>
-      http.get(`/clients/${clientId}`).then((r) => r.data),
+      http.get(`/contacts/clients/${clientId}`).then((r) => r.data),
     );
   }
 
@@ -171,7 +171,7 @@ export class MyCaseClientService {
     data: McClientInput,
   ): Promise<McClient> {
     return this.call(installationId, (http) =>
-      http.post('/clients', data).then((r) => r.data),
+      http.post('/contacts/clients', data).then((r) => r.data),
     );
   }
 
@@ -181,7 +181,7 @@ export class MyCaseClientService {
     data: Partial<McClientInput>,
   ): Promise<McClient> {
     return this.call(installationId, (http) =>
-      http.put(`/clients/${clientId}`, data).then((r) => r.data),
+      http.put(`/contacts/clients/${clientId}`, data).then((r) => r.data),
     );
   }
 
@@ -201,7 +201,7 @@ export class MyCaseClientService {
       if (pageToken) params.page_token = pageToken;
 
       const { clients, link } = await this.call(installationId, (http) =>
-        http.get('/clients', { params }).then((r) => ({
+        http.get('/contacts/clients', { params }).then((r) => ({
           clients: (r.data?.clients ?? (Array.isArray(r.data) ? r.data : [])) as McClient[],
           link: r.headers['link'] as string | undefined,
         })),
@@ -233,7 +233,7 @@ export class MyCaseClientService {
       if (pageToken) params.page_token = pageToken;
 
       const { clients, link } = await this.call(installationId, (http) =>
-        http.get('/clients', { params }).then((r) => ({
+        http.get('/contacts/clients', { params }).then((r) => ({
           clients: (r.data?.clients ?? (Array.isArray(r.data) ? r.data : [])) as McClient[],
           link: r.headers['link'] as string | undefined,
         })),
@@ -281,7 +281,7 @@ export class MyCaseClientService {
         if (pageToken) reqParams.page_token = pageToken;
 
         const { clients, link } = await this.call(installationId, (http) =>
-          http.get('/clients', { params: reqParams }).then((r) => ({
+          http.get('/contacts/clients', { params: reqParams }).then((r) => ({
             clients: (r.data?.clients ?? (Array.isArray(r.data) ? r.data : [])) as McClient[],
             link: r.headers['link'] as string | undefined,
           })),
@@ -395,7 +395,7 @@ export class MyCaseClientService {
   ): Promise<McMatter[]> {
     return this.call(installationId, (http) =>
       http
-        .get(`/clients/${clientId}/court_cases`)
+        .get(`/contacts/clients/${clientId}/court_cases`)
         .then((r) => r.data.cases ?? r.data ?? []),
     );
   }
@@ -424,7 +424,7 @@ export class MyCaseClientService {
     data: McNoteInput,
   ): Promise<McNote> {
     return this.call(installationId, (http) =>
-      http.post(`/clients/${clientId}/notes`, data).then((r) => r.data),
+      http.post(`/contacts/clients/${clientId}/notes`, data).then((r) => r.data),
     );
   }
 
@@ -455,7 +455,7 @@ export class MyCaseClientService {
   ): Promise<McNote[]> {
     return this.call(installationId, (http) =>
       http
-        .get(`/clients/${clientId}/notes`)
+        .get(`/contacts/clients/${clientId}/notes`)
         .then((r) => r.data.notes ?? r.data ?? []),
     );
   }
