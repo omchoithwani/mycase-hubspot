@@ -49,25 +49,33 @@ export class CrmCardController {
   ) {
     this.verifySignature('GET', 'contact', allQuery, signature);
 
-    const installation = await this.findInstallation(portalId);
-    if (!installation) return this.emptyCard('MyCase not connected for this portal');
+    let installation: Awaited<ReturnType<typeof this.findInstallation>>;
+    let mycaseObjectId: string | undefined;
+    try {
+      installation = await this.findInstallation(portalId);
+      if (!installation) return this.emptyCard('MyCase not connected for this portal');
+
+      mycaseObjectId =
+        myCaseId ||
+        (await this.syncRecords.findByHubSpotId(installation.id, 'contact', contactId))
+          ?.mycaseObjectId;
+    } catch (err: any) {
+      this.logger.error(`CRM card contact lookup failed: ${err.message}`);
+      return this.emptyCard('Sync service temporarily unavailable — try again shortly');
+    }
 
     // Fast path: HubSpot may already have the my_case_id in the contact properties
-    const mycaseObjectId =
-      myCaseId ||
-      (await this.syncRecords.findByHubSpotId(installation.id, 'contact', contactId))
-        ?.mycaseObjectId;
 
     if (!mycaseObjectId) {
       return this.emptyCard('Not yet synced — trigger a sync from the contact record');
     }
 
     try {
-      const client = await this.mycase.getClient(installation.id, mycaseObjectId);
+      const client = await this.mycase.getClient(installation!.id, mycaseObjectId);
       const name =
         [client.first_name, client.last_name].filter(Boolean).join(' ') ||
         `Client #${client.id}`;
-      const profileUrl = `${mycaseWebBase(installation.mycaseWebBaseUrl)}/contacts/clients/${client.id}`;
+      const profileUrl = `${mycaseWebBase(installation!.mycaseWebBaseUrl)}/contacts/clients/${client.id}`;
 
       return {
         results: [
@@ -110,13 +118,20 @@ export class CrmCardController {
   ) {
     this.verifySignature('GET', 'deal', allQuery, signature);
 
-    const installation = await this.findInstallation(portalId);
-    if (!installation) return this.emptyCard('MyCase not connected for this portal');
+    let installation: Awaited<ReturnType<typeof this.findInstallation>>;
+    let mycaseObjectId: string | undefined;
+    try {
+      installation = await this.findInstallation(portalId);
+      if (!installation) return this.emptyCard('MyCase not connected for this portal');
 
-    const mycaseObjectId =
-      myCaseId ||
-      (await this.syncRecords.findByHubSpotId(installation.id, 'deal', dealId))
-        ?.mycaseObjectId;
+      mycaseObjectId =
+        myCaseId ||
+        (await this.syncRecords.findByHubSpotId(installation.id, 'deal', dealId))
+          ?.mycaseObjectId;
+    } catch (err: any) {
+      this.logger.error(`CRM card deal lookup failed: ${err.message}`);
+      return this.emptyCard('Sync service temporarily unavailable — try again shortly');
+    }
 
     if (!mycaseObjectId) {
       return this.emptyCard('Not yet synced — trigger a sync from the deal record');
@@ -124,10 +139,10 @@ export class CrmCardController {
 
     try {
       const [matter, mismatchLogs] = await Promise.all([
-        this.mycase.getMatter(installation.id, mycaseObjectId),
-        this.errorLogs.findMismatchesBySourceId(installation.id, dealId),
+        this.mycase.getMatter(installation!.id, mycaseObjectId),
+        this.errorLogs.findMismatchesBySourceId(installation!.id, dealId),
       ]);
-      const caseUrl = `${mycaseWebBase(installation.mycaseWebBaseUrl)}/court_cases/${matter.id}`;
+      const caseUrl = `${mycaseWebBase(installation!.mycaseWebBaseUrl)}/court_cases/${matter.id}`;
 
       const fieldWarnings = mismatchLogs.map((log) => ({
         field: (log.rawResponse as any)?.field ?? log.errorMessage,
@@ -180,16 +195,21 @@ export class CrmCardController {
     @Query('force') forceStr: string | undefined,
   ) {
     const force = forceStr === 'true';
-    const installation = await this.findInstallation(portalId);
-    if (!installation) return { queued: false, error: 'Installation not found' };
-    await this.initialSync.triggerSingleRecord(
-      installation.id,
-      objectType,
-      objectId,
-      'hs_to_mc',
-      force,
-    );
-    return { queued: true };
+    try {
+      const installation = await this.findInstallation(portalId);
+      if (!installation) return { queued: false, error: 'Installation not found' };
+      await this.initialSync.triggerSingleRecord(
+        installation.id,
+        objectType,
+        objectId,
+        'hs_to_mc',
+        force,
+      );
+      return { queued: true };
+    } catch (err: any) {
+      this.logger.error(`CRM card sync trigger failed: ${err.message}`);
+      return { queued: false, error: 'Sync service temporarily unavailable — try again shortly' };
+    }
   }
 
   private async findInstallation(portalId: string) {
