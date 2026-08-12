@@ -178,14 +178,25 @@ export class DealToMatterProcessor extends BaseProcessor {
         this.logger.log(
           `Linked deal ${sourceId} to existing MyCase matter ${dupResult.existingId} (${dupResult.confidence} match)`,
         );
-        await this.syncRecords.upsert({
-          installationId,
-          objectType: 'deal',
-          hubspotObjectId: sourceId,
-          mycaseObjectId: dupResult.existingId,
-          payload: matterData as any,
-          direction: 'hs_to_mc',
-        });
+        try {
+          await this.syncRecords.upsert({
+            installationId,
+            objectType: 'deal',
+            hubspotObjectId: sourceId,
+            mycaseObjectId: dupResult.existingId,
+            payload: matterData as any,
+            direction: 'hs_to_mc',
+          });
+        } catch (err: any) {
+          if (err?.code === '23505') {
+            // Another HubSpot deal already claims this MyCase matter — skip
+            this.logger.warn(
+              `deal-to-matter [${sourceId}]: MyCase matter ${dupResult.existingId} already claimed by another deal — skipping`,
+            );
+            return this.skip(`MyCase matter ${dupResult.existingId} already linked to another HubSpot deal`);
+          }
+          throw err;
+        }
         return this.skip(`Linked to existing MyCase matter (${dupResult.confidence} match)`);
       }
 
@@ -234,14 +245,24 @@ export class DealToMatterProcessor extends BaseProcessor {
     }
 
     // 9. Upsert sync record + write back matter ID
-    await this.syncRecords.upsert({
-      installationId,
-      objectType: 'deal',
-      hubspotObjectId: sourceId,
-      mycaseObjectId: mycaseId,
-      payload: matterData as any,
-      direction: 'hs_to_mc',
-    });
+    try {
+      await this.syncRecords.upsert({
+        installationId,
+        objectType: 'deal',
+        hubspotObjectId: sourceId,
+        mycaseObjectId: mycaseId,
+        payload: matterData as any,
+        direction: 'hs_to_mc',
+      });
+    } catch (err: any) {
+      if (err?.code === '23505') {
+        this.logger.warn(
+          `deal-to-matter [${sourceId}]: MyCase matter ${mycaseId} already claimed by another deal — skipping sync record upsert`,
+        );
+        return this.skip(`MyCase matter ${mycaseId} already linked to another HubSpot deal`);
+      }
+      throw err;
+    }
 
     try {
       await this.hubspot.updateDeal(
