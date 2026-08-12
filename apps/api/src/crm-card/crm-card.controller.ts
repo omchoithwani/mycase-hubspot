@@ -11,6 +11,7 @@ import { createHash } from 'crypto';
 import { InstallationService } from '../installation/installation.service';
 import { SyncRecordService } from '../sync/sync-record.service';
 import { MyCaseClientService } from '../mycase/mycase-client.service';
+import { HubSpotClientService } from '../hubspot/hubspot-client.service';
 import { InitialSyncService } from '../sync/initial-sync.service';
 import { ErrorLogService } from '../error-log/error-log.service';
 
@@ -27,6 +28,7 @@ export class CrmCardController {
     private readonly installationService: InstallationService,
     private readonly syncRecords: SyncRecordService,
     private readonly mycase: MyCaseClientService,
+    private readonly hubspot: HubSpotClientService,
     private readonly config: ConfigService,
     private readonly initialSync: InitialSyncService,
     private readonly errorLogs: ErrorLogService,
@@ -55,16 +57,27 @@ export class CrmCardController {
       installation = await this.findInstallation(portalId);
       if (!installation) return this.emptyCard('MyCase not connected for this portal');
 
+      // 1. Query param (when HubSpot sends my_case_id via objectProperties)
+      // 2. sync_records DB lookup
+      // 3. HubSpot API direct lookup (fallback for records synced before sync_records were written)
       mycaseObjectId =
-        myCaseId ||
+        (myCaseId || undefined) ||
         (await this.syncRecords.findByHubSpotId(installation.id, 'contact', contactId))
           ?.mycaseObjectId;
+
+      if (!mycaseObjectId) {
+        const contact = await this.hubspot.getContact(
+          installation.hubspotPortalId,
+          installation.id,
+          contactId,
+        );
+        const hsId = contact.properties?.my_case_id as string | undefined;
+        if (hsId) mycaseObjectId = hsId;
+      }
     } catch (err: any) {
       this.logger.error(`CRM card contact lookup failed: ${err.message}`);
       return this.emptyCard('Sync service temporarily unavailable — try again shortly');
     }
-
-    // Fast path: HubSpot may already have the my_case_id in the contact properties
 
     if (!mycaseObjectId) {
       return this.emptyCard('Not yet synced — trigger a sync from the contact record');
@@ -124,10 +137,24 @@ export class CrmCardController {
       installation = await this.findInstallation(portalId);
       if (!installation) return this.emptyCard('MyCase not connected for this portal');
 
+      // 1. Query param (when HubSpot sends my_case_id via objectProperties)
+      // 2. sync_records DB lookup
+      // 3. HubSpot API direct lookup (fallback for records synced before sync_records were written)
       mycaseObjectId =
-        myCaseId ||
+        (myCaseId || undefined) ||
         (await this.syncRecords.findByHubSpotId(installation.id, 'deal', dealId))
           ?.mycaseObjectId;
+
+      if (!mycaseObjectId) {
+        const deal = await this.hubspot.getDeal(
+          installation.hubspotPortalId,
+          installation.id,
+          dealId,
+          ['my_case_id'],
+        );
+        const hsId = deal.properties?.my_case_id as string | undefined;
+        if (hsId) mycaseObjectId = hsId;
+      }
     } catch (err: any) {
       this.logger.error(`CRM card deal lookup failed: ${err.message}`);
       return this.emptyCard('Sync service temporarily unavailable — try again shortly');

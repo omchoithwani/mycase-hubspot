@@ -5,14 +5,6 @@
     "name": "MyCase Case",
     "location": "crm.record.tab",
     "entrypoint": "/app/cards/MyCaseDealCard.jsx",
-    "objectTypes": [
-      {
-        "name": "deals",
-        "properties": [
-          { "name": "dealname" },
-          { "name": "my_case_id" }
-        ]
-      }
-    ]
+    "objectTypes": ["deals"]
   }
 }
