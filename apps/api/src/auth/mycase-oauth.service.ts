@@ -11,6 +11,9 @@ const MYCASE_TOKEN_URL = 'https://auth.mycase.com/tokens';
 @Injectable()
 export class MyCaseOAuthService {
   private readonly logger = new Logger(MyCaseOAuthService.name);
+  // Dedup concurrent refresh requests per installation so only one token exchange
+  // goes out at a time — prevents "refresh token already used" 401s under load.
+  private readonly _refreshLock = new Map<string, Promise<Installation>>();
 
   constructor(
     private readonly config: ConfigService,
@@ -85,6 +88,25 @@ export class MyCaseOAuthService {
   }
 
   async refreshTokens(installation: Installation): Promise<Installation> {
+    const key = installation.id;
+
+    // If another caller is already refreshing this installation's token, wait for
+    // that result rather than firing a second exchange (which would invalidate the
+    // first refresh token and cause a 401 for both callers).
+    const inflight = this._refreshLock.get(key);
+    if (inflight) {
+      this.logger.debug(`Token refresh for ${key} already in flight — waiting for result`);
+      return inflight;
+    }
+
+    const promise = this._doRefreshTokens(installation).finally(() => {
+      this._refreshLock.delete(key);
+    });
+    this._refreshLock.set(key, promise);
+    return promise;
+  }
+
+  private async _doRefreshTokens(installation: Installation): Promise<Installation> {
     try {
       const refreshToken = this.tokenStore.decrypt(
         installation.mycaseRefreshToken!,
@@ -113,12 +135,18 @@ export class MyCaseOAuthService {
         refreshToken: refresh_token ? this.tokenStore.encrypt(refresh_token) : null,
         expiresAt,
       });
-    } catch (err) {
+    } catch (err: any) {
+      const status: number | undefined = err?.response?.status;
+      const body = err?.response?.data;
       this.logger.error(
-        `Failed to refresh MyCase token for installation ${installation.id} — marking disconnected`,
+        `Failed to refresh MyCase token for installation ${installation.id} — status=${status ?? 'network'} body=${JSON.stringify(body)}`,
         err,
       );
-      await this.installationService.setMyCaseDisconnected(installation.id);
+      // Only mark disconnected on definitive auth failures (401/403).
+      // Network errors or server errors are transient — don't force a reconnect.
+      if (status === 401 || status === 403) {
+        await this.installationService.setMyCaseDisconnected(installation.id);
+      }
       throw new UnauthorizedException('MyCase token refresh failed — please reconnect MyCase');
     }
   }

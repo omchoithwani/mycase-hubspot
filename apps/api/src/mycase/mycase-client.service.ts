@@ -92,6 +92,7 @@ export class MyCaseClientService {
   private async buildClient(installationId: string): Promise<AxiosInstance> {
     const installation = await this.installationService.findByIdOrFail(installationId);
     const base = installation.mycaseWebBaseUrl ?? installation.mycaseBaseUrl ?? MYCASE_BASE;
+    this.logger.debug(`[${installationId.slice(0, 8)}] data API base: ${base}`);
     return this.buildClientForBase(installationId, base);
   }
 
@@ -131,6 +132,10 @@ export class MyCaseClientService {
         );
       }
       if (axiosErr.response?.status === 401) {
+        const body401 = axiosErr.response?.data;
+        this.logger.error(
+          `MyCase 401 — URL: ${axiosErr.config?.baseURL}${axiosErr.config?.url} — body: ${JSON.stringify(body401)}`,
+        );
         throw new UnauthorizedException('MyCase authentication failed');
       }
       // For any other HTTP error, embed the response body so it reaches error_logs
