@@ -160,6 +160,11 @@ export class AuthController {
     try {
       const apiUrl = this.config.get<string>('API_URL') ?? '';
       if (apiUrl) {
+        // Delete all stale subscriptions first to avoid duplicates from reconnects
+        const existing = await this.mycase.listWebhookSubscriptions(installationId);
+        await Promise.allSettled(
+          existing.map((s) => this.mycase.deleteWebhookSubscription(installationId, s.id)),
+        );
         const webhookBase = `${apiUrl}/webhooks/mycase/${installationId}`;
         await Promise.all([
           this.mycase.createWebhookSubscription(installationId, 'case', webhookBase, ['created', 'updated']),

@@ -54,7 +54,7 @@ export class MyCaseClientService {
     const token = await this.oauthService.getValidAccessToken(installation);
 
     const instance = axios.create({
-      baseURL: installation.mycaseBaseUrl ?? MYCASE_BASE,
+      baseURL: installation.mycaseWebBaseUrl ?? installation.mycaseBaseUrl ?? MYCASE_BASE,
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
