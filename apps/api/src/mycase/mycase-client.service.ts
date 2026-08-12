@@ -49,12 +49,12 @@ export class MyCaseClientService {
 
   // ── HTTP factory ─────────────────────────────────────────────────────────────
 
-  private async buildClient(installationId: string): Promise<AxiosInstance> {
+  private async buildClientForBase(installationId: string, baseURL: string): Promise<AxiosInstance> {
     const installation = await this.installationService.findByIdOrFail(installationId);
     const token = await this.oauthService.getValidAccessToken(installation);
 
     const instance = axios.create({
-      baseURL: installation.mycaseWebBaseUrl ?? installation.mycaseBaseUrl ?? MYCASE_BASE,
+      baseURL,
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -71,20 +71,14 @@ export class MyCaseClientService {
         (error.response?.status ?? 0) >= 500,
     });
 
-    // On 401 → refresh token and retry once
     instance.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        if (
-          error.response?.status === 401 &&
-          !(error.config as any)._retried
-        ) {
+        if (error.response?.status === 401 && !(error.config as any)._retried) {
           (error.config as any)._retried = true;
           const fresh = await this.installationService.findByIdOrFail(installationId);
           const newToken = await this.oauthService.getValidAccessToken(fresh);
-          (error.config as InternalAxiosRequestConfig).headers[
-            'Authorization'
-          ] = `Bearer ${newToken}`;
+          (error.config as InternalAxiosRequestConfig).headers['Authorization'] = `Bearer ${newToken}`;
           return instance.request(error.config!);
         }
         return Promise.reject(error);
@@ -92,6 +86,20 @@ export class MyCaseClientService {
     );
 
     return instance;
+  }
+
+  // Data API — firm's own subdomain (court_cases, contacts/clients, notes, custom_fields)
+  private async buildClient(installationId: string): Promise<AxiosInstance> {
+    const installation = await this.installationService.findByIdOrFail(installationId);
+    const base = installation.mycaseWebBaseUrl ?? installation.mycaseBaseUrl ?? MYCASE_BASE;
+    return this.buildClientForBase(installationId, base);
+  }
+
+  // Management API — always external-integrations.mycase.com/v1 (webhooks, /firm)
+  private async buildCentralClient(installationId: string): Promise<AxiosInstance> {
+    const installation = await this.installationService.findByIdOrFail(installationId);
+    const base = installation.mycaseBaseUrl ?? MYCASE_BASE;
+    return this.buildClientForBase(installationId, base);
   }
 
   private async throttle(installationId: string): Promise<void> {
@@ -136,6 +144,38 @@ export class MyCaseClientService {
         const enriched: any = new Error(
           `MyCase ${status}: ${axiosErr.config?.method?.toUpperCase()} ${axiosErr.config?.url} — ${detail}`,
         );
+        enriched.statusCode = status;
+        enriched.responseData = body;
+        throw enriched;
+      }
+      throw err;
+    }
+  }
+
+  private async callCentral<T>(
+    installationId: string,
+    fn: (http: AxiosInstance) => Promise<T>,
+  ): Promise<T> {
+    await this.throttle(installationId);
+    const http = await this.buildCentralClient(installationId);
+    try {
+      return await fn(http);
+    } catch (err) {
+      const axiosErr = err as AxiosError;
+      if (axiosErr.response?.status === 404) {
+        throw new NotFoundException(
+          `MyCase resource not found: ${axiosErr.config?.baseURL}${axiosErr.config?.url}`,
+        );
+      }
+      if (axiosErr.response?.status === 401) {
+        throw new UnauthorizedException('MyCase authentication failed');
+      }
+      if (axiosErr.response?.data) {
+        const status = axiosErr.response.status;
+        const body = axiosErr.response.data;
+        const detail = typeof body === 'string' ? body : JSON.stringify(body);
+        this.logger.error(`MyCase ${status} — ${axiosErr.config?.baseURL}${axiosErr.config?.url} — ${detail}`);
+        const enriched: any = new Error(`MyCase ${status}: ${axiosErr.config?.method?.toUpperCase()} ${axiosErr.config?.url} — ${detail}`);
         enriched.statusCode = status;
         enriched.responseData = body;
         throw enriched;
@@ -463,7 +503,7 @@ export class MyCaseClientService {
   // ── Webhook Subscriptions ─────────────────────────────────────────────────────
 
   async listWebhookSubscriptions(installationId: string): Promise<McWebhookSubscription[]> {
-    return this.call(installationId, (http) =>
+    return this.callCentral(installationId, (http) =>
       http.get('/webhooks/subscriptions').then((r) => r.data ?? []),
     );
   }
@@ -474,13 +514,13 @@ export class MyCaseClientService {
     url: string,
     actions: Array<'created' | 'updated' | 'deleted'>,
   ): Promise<McWebhookSubscription> {
-    return this.call(installationId, (http) =>
+    return this.callCentral(installationId, (http) =>
       http.post('/webhooks/subscriptions', { model, url, actions }).then((r) => r.data),
     );
   }
 
   async deleteWebhookSubscription(installationId: string, subscriptionId: string): Promise<void> {
-    await this.call(installationId, (http) =>
+    await this.callCentral(installationId, (http) =>
       http.delete(`/webhooks/subscriptions/${subscriptionId}`).then(() => undefined),
     );
   }
@@ -489,7 +529,7 @@ export class MyCaseClientService {
 
   async getFirmWebBaseUrl(installationId: string): Promise<string | null> {
     try {
-      const data = await this.call(installationId, (http) =>
+      const data = await this.callCentral(installationId, (http) =>
         http.get('/firm').then((r) => r.data),
       );
       this.logger.log(`MyCase /firm response: ${JSON.stringify(data)}`);
