@@ -88,15 +88,16 @@ export class MyCaseClientService {
     return instance;
   }
 
-  // Data API — firm's own subdomain (court_cases, contacts/clients, notes, custom_fields)
+  // Data API — external-integrations.mycase.com/v1 (court_cases, contacts/clients, notes, custom_fields)
+  // mycaseWebBaseUrl is the firm's web UI URL — used only for CRM card links, NOT as API base.
   private async buildClient(installationId: string): Promise<AxiosInstance> {
     const installation = await this.installationService.findByIdOrFail(installationId);
-    const base = installation.mycaseWebBaseUrl ?? installation.mycaseBaseUrl ?? MYCASE_BASE;
+    const base = installation.mycaseBaseUrl ?? MYCASE_BASE;
     this.logger.debug(`[${installationId.slice(0, 8)}] data API base: ${base}`);
     return this.buildClientForBase(installationId, base);
   }
 
-  // Management API — always external-integrations.mycase.com/v1 (webhooks, /firm)
+  // Management API — external-integrations.mycase.com/v1 (webhooks, /firm)
   private async buildCentralClient(installationId: string): Promise<AxiosInstance> {
     const installation = await this.installationService.findByIdOrFail(installationId);
     const base = installation.mycaseBaseUrl ?? MYCASE_BASE;
