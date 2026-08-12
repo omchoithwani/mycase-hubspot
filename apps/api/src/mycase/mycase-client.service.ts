@@ -334,7 +334,7 @@ export class MyCaseClientService {
 
   async getMatter(installationId: string, matterId: string): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.get(`/cases/${matterId}`).then((r) => r.data),
+      http.get(`/court_cases/${matterId}`).then((r) => r.data),
     );
   }
 
@@ -343,7 +343,7 @@ export class MyCaseClientService {
     data: McMatterInput,
   ): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.post('/cases', data).then((r) => r.data),
+      http.post('/court_cases', data).then((r) => r.data),
     );
   }
 
@@ -353,7 +353,7 @@ export class MyCaseClientService {
     data: Partial<McMatterInput>,
   ): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.put(`/cases/${matterId}`, data).then((r) => r.data),
+      http.put(`/court_cases/${matterId}`, data).then((r) => r.data),
     );
   }
 
@@ -373,8 +373,8 @@ export class MyCaseClientService {
       if (pageToken) params.page_token = pageToken;
 
       const { matters, link } = await this.call(installationId, (http) =>
-        http.get('/cases', { params }).then((r) => ({
-          matters: (r.data?.cases ?? (Array.isArray(r.data) ? r.data : [])) as McMatter[],
+        http.get('/court_cases', { params }).then((r) => ({
+          matters: (r.data?.court_cases ?? r.data?.cases ?? (Array.isArray(r.data) ? r.data : [])) as McMatter[],
           link: r.headers['link'] as string | undefined,
         })),
       );
@@ -395,7 +395,7 @@ export class MyCaseClientService {
   ): Promise<McMatter[]> {
     return this.call(installationId, (http) =>
       http
-        .get(`/clients/${clientId}/cases`)
+        .get(`/clients/${clientId}/court_cases`)
         .then((r) => r.data.cases ?? r.data ?? []),
     );
   }
@@ -414,7 +414,7 @@ export class MyCaseClientService {
     data: McNoteInput,
   ): Promise<McNote> {
     return this.call(installationId, (http) =>
-      http.post(`/cases/${caseId}/notes`, data).then((r) => r.data),
+      http.post(`/court_cases/${caseId}/notes`, data).then((r) => r.data),
     );
   }
 
@@ -444,7 +444,7 @@ export class MyCaseClientService {
   ): Promise<McNote[]> {
     return this.call(installationId, (http) =>
       http
-        .get(`/cases/${matterId}/notes`)
+        .get(`/court_cases/${matterId}/notes`)
         .then((r) => r.data.notes ?? r.data ?? []),
     );
   }
