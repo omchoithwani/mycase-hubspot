@@ -5,6 +5,16 @@
     "name": "MyCase Client",
     "location": "crm.record.tab",
     "entrypoint": "/app/cards/MyCaseContactCard.jsx",
-    "objectTypes": ["contacts"]
+    "objectTypes": [
+      {
+        "name": "contacts",
+        "properties": [
+          { "name": "email" },
+          { "name": "firstname" },
+          { "name": "lastname" },
+          { "name": "my_case_id" }
+        ]
+      }
+    ]
   }
 }
