@@ -139,8 +139,7 @@ export class AuthController {
       baseUrl: null,
     });
 
-    // Store firm UUID from OAuth exchange — used to scope data API calls on the
-    // central API (external-integrations.mycase.com/v1/firms/{uuid}/court_cases/...)
+    // Store firm UUID from OAuth exchange (informational; Bearer token already scopes all API calls)
     if (tokens.firmUuid) {
       await this.installationService.updateMyCaseFirmUuid(installationId, tokens.firmUuid);
       this.logger.log(`Stored MyCase firm UUID: ${tokens.firmUuid}`);

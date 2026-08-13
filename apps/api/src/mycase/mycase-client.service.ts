@@ -88,23 +88,16 @@ export class MyCaseClientService {
     return instance;
   }
 
-  // Data API — external-integrations.mycase.com/v1/firms/{firmUuid}
-  // The central API is multi-tenant; requests must be scoped to the firm's UUID
-  // so the server can route them to the correct data partition.
+  // Data API — always external-integrations.mycase.com/v1
+  // Bearer token identifies the firm; no firm UUID prefix needed in the URL.
   private async buildClient(installationId: string): Promise<AxiosInstance> {
-    const installation = await this.installationService.findByIdOrFail(installationId);
-    const firmUuid = installation.mycaseFirmUuid;
-    const base = installation.mycaseBaseUrl ??
-      (firmUuid ? `${MYCASE_BASE}/firms/${firmUuid}` : MYCASE_BASE);
-    this.logger.debug(`[${installationId.slice(0, 8)}] data API base: ${base}`);
-    return this.buildClientForBase(installationId, base);
+    this.logger.debug(`[${installationId.slice(0, 8)}] data API base: ${MYCASE_BASE}`);
+    return this.buildClientForBase(installationId, MYCASE_BASE);
   }
 
   // Management API — always external-integrations.mycase.com/v1 (webhooks, /firm)
   private async buildCentralClient(installationId: string): Promise<AxiosInstance> {
-    const installation = await this.installationService.findByIdOrFail(installationId);
-    const base = installation.mycaseBaseUrl ?? MYCASE_BASE;
-    return this.buildClientForBase(installationId, base);
+    return this.buildClientForBase(installationId, MYCASE_BASE);
   }
 
   private async throttle(installationId: string): Promise<void> {
@@ -383,7 +376,7 @@ export class MyCaseClientService {
 
   async getMatter(installationId: string, matterId: string): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.get(`/court_cases/${matterId}`).then((r) => r.data?.court_case ?? r.data?.case ?? r.data),
+      http.get(`/cases/${matterId}`).then((r) => r.data),
     );
   }
 
@@ -392,7 +385,7 @@ export class MyCaseClientService {
     data: McMatterInput,
   ): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.post('/court_cases', data).then((r) => r.data),
+      http.post('/cases', data).then((r) => r.data),
     );
   }
 
@@ -400,9 +393,9 @@ export class MyCaseClientService {
     installationId: string,
     matterId: string,
     data: Partial<McMatterInput>,
-  ): Promise<McMatter> {
-    return this.call(installationId, (http) =>
-      http.put(`/court_cases/${matterId}`, data).then((r) => r.data),
+  ): Promise<void> {
+    await this.call(installationId, (http) =>
+      http.put(`/cases/${matterId}`, data).then(() => undefined),
     );
   }
 
@@ -422,8 +415,8 @@ export class MyCaseClientService {
       if (pageToken) params.page_token = pageToken;
 
       const { matters, link } = await this.call(installationId, (http) =>
-        http.get('/court_cases', { params }).then((r) => ({
-          matters: (r.data?.court_cases ?? r.data?.cases ?? (Array.isArray(r.data) ? r.data : [])) as McMatter[],
+        http.get('/cases', { params }).then((r) => ({
+          matters: (Array.isArray(r.data) ? r.data : (r.data?.cases ?? [])) as McMatter[],
           link: r.headers['link'] as string | undefined,
         })),
       );
@@ -444,8 +437,8 @@ export class MyCaseClientService {
   ): Promise<McMatter[]> {
     return this.call(installationId, (http) =>
       http
-        .get(`/contacts/clients/${clientId}/court_cases`)
-        .then((r) => r.data.court_cases ?? r.data.cases ?? r.data ?? []),
+        .get(`/clients/${clientId}/cases`)
+        .then((r) => (Array.isArray(r.data) ? r.data : (r.data?.cases ?? []))),
     );
   }
 
@@ -463,7 +456,7 @@ export class MyCaseClientService {
     data: McNoteInput,
   ): Promise<McNote> {
     return this.call(installationId, (http) =>
-      http.post(`/court_cases/${caseId}/notes`, data).then((r) => r.data),
+      http.post(`/cases/${caseId}/notes`, data).then((r) => r.data),
     );
   }
 
@@ -493,8 +486,8 @@ export class MyCaseClientService {
   ): Promise<McNote[]> {
     return this.call(installationId, (http) =>
       http
-        .get(`/court_cases/${matterId}/notes`)
-        .then((r) => r.data.notes ?? r.data ?? []),
+        .get(`/cases/${matterId}/notes`)
+        .then((r) => (Array.isArray(r.data) ? r.data : (r.data?.notes ?? []))),
     );
   }
 
