@@ -131,14 +131,20 @@ export class AuthController {
 
     const tokens = await this.mycaseOAuth.exchangeCode(code);
 
-    // Store tokens; baseUrl: null explicitly clears any stale firm-specific API URL
-    // so buildClient falls back to the central external-integrations.mycase.com/v1 base
+    // Store tokens and clear stale base URL override
     await this.installationService.updateMyCaseTokens(installationId, {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
       baseUrl: null,
     });
+
+    // Store firm UUID from OAuth exchange — used to scope data API calls on the
+    // central API (external-integrations.mycase.com/v1/firms/{uuid}/court_cases/...)
+    if (tokens.firmUuid) {
+      await this.installationService.updateMyCaseFirmUuid(installationId, tokens.firmUuid);
+      this.logger.log(`Stored MyCase firm UUID: ${tokens.firmUuid}`);
+    }
 
     try {
       const firmWebBase = await this.mycase.getFirmWebBaseUrl(installationId);

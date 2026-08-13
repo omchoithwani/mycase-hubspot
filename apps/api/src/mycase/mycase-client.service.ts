@@ -88,17 +88,19 @@ export class MyCaseClientService {
     return instance;
   }
 
-  // Data API — firm's own subdomain (e.g. the-law-offices.mycase.com).
-  // Individual resource endpoints use an /info suffix (e.g. /court_cases/{id}/info)
-  // which routes to the JSON API controller; the bare path is the web UI HTML route.
+  // Data API — external-integrations.mycase.com/v1/firms/{firmUuid}
+  // The central API is multi-tenant; requests must be scoped to the firm's UUID
+  // so the server can route them to the correct data partition.
   private async buildClient(installationId: string): Promise<AxiosInstance> {
     const installation = await this.installationService.findByIdOrFail(installationId);
-    const base = installation.mycaseWebBaseUrl ?? installation.mycaseBaseUrl ?? MYCASE_BASE;
+    const firmUuid = installation.mycaseFirmUuid;
+    const base = installation.mycaseBaseUrl ??
+      (firmUuid ? `${MYCASE_BASE}/firms/${firmUuid}` : MYCASE_BASE);
     this.logger.debug(`[${installationId.slice(0, 8)}] data API base: ${base}`);
     return this.buildClientForBase(installationId, base);
   }
 
-  // Management API — external-integrations.mycase.com/v1 (webhooks, /firm)
+  // Management API — always external-integrations.mycase.com/v1 (webhooks, /firm)
   private async buildCentralClient(installationId: string): Promise<AxiosInstance> {
     const installation = await this.installationService.findByIdOrFail(installationId);
     const base = installation.mycaseBaseUrl ?? MYCASE_BASE;
@@ -381,7 +383,7 @@ export class MyCaseClientService {
 
   async getMatter(installationId: string, matterId: string): Promise<McMatter> {
     return this.call(installationId, (http) =>
-      http.get(`/court_cases/${matterId}/info`).then((r) => r.data?.court_case ?? r.data?.case ?? r.data),
+      http.get(`/court_cases/${matterId}`).then((r) => r.data?.court_case ?? r.data?.case ?? r.data),
     );
   }
 

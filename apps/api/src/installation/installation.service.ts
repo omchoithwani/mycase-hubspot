@@ -78,6 +78,10 @@ export class InstallationService {
     await this.repo.update(id, { mycaseWebBaseUrl: webBaseUrl });
   }
 
+  async updateMyCaseFirmUuid(id: string, firmUuid: string): Promise<void> {
+    await this.repo.update(id, { mycaseFirmUuid: firmUuid });
+  }
+
   async updateMyCaseBaseUrl(id: string, baseUrl: string): Promise<void> {
     await this.repo.update(id, { mycaseBaseUrl: baseUrl });
   }
