@@ -7,7 +7,6 @@ import { SyncRecordService } from '../sync-record.service';
 import { InstallationService } from '../../installation/installation.service';
 import { FieldMappingService } from '../../field-mapping/field-mapping.service';
 import { StageMappingService } from '../../stage-mapping/stage-mapping.service';
-import { DuplicateDetectorService } from '../../duplicate/duplicate-detector.service';
 import { SyncCriteriaService } from '../../sync-criteria/sync-criteria.service';
 import { HsDealInput } from '../../hubspot/dto/deal.dto';
 
@@ -25,8 +24,7 @@ export class MatterToDealProcessor extends BaseProcessor {
     private readonly syncRecords: SyncRecordService,
     private readonly fieldMapping: FieldMappingService,
     private readonly stageMapping: StageMappingService,
-    private readonly duplicateDetector: DuplicateDetectorService,
-    private readonly syncCriteria: SyncCriteriaService,
+private readonly syncCriteria: SyncCriteriaService,
   ) {
     super();
   }
@@ -145,74 +143,23 @@ export class MatterToDealProcessor extends BaseProcessor {
       return this.skip('Payload unchanged since last sync');
     }
 
-    // 9. Duplicate detection (create path only)
-    let hubspotId = existing?.hubspotObjectId;
-    let action: 'created' | 'updated';
+    // 9. mc_to_hs only updates — never create a new HubSpot deal from MyCase.
+    //    Deals originate in HubSpot; MyCase changes only propagate back to existing records.
+    const hubspotId = existing?.hubspotObjectId;
     const fieldMismatches: import('@mycase-hubspot/shared-types').FieldMismatch[] = [];
 
     if (!hubspotId) {
-      const dupResult = await this.duplicateDetector.findExistingDeal(
-        installationId,
-        installation.hubspotPortalId,
-        'mc_to_hs',
-        {
-          name: dealData.dealname ?? matter.name,
-          linkedContactHsId: contactRecord?.hubspotObjectId,
-        },
-      );
-
-      if (dupResult.existingId) {
-        this.logger.log(
-          `Linked matter ${sourceId} to existing HubSpot deal ${dupResult.existingId} (${dupResult.confidence} match)`,
-        );
-        await this.syncRecords.upsert({
-          installationId,
-          objectType: 'deal',
-          hubspotObjectId: dupResult.existingId,
-          mycaseObjectId: sourceId,
-          payload: dealData as any,
-          direction: 'mc_to_hs',
-        });
-        return this.skip(`Linked to existing HubSpot deal (${dupResult.confidence} match)`);
-      }
-
-      let created: { id: string };
-      try {
-        created = await this.hubspot.createDeal(installation.hubspotPortalId, installationId, dealData);
-      } catch (err: any) {
-        // HubSpot 400: my_case_id unique constraint — another deal already owns this ID
-        const existingId = this.extractExistingDealId(err);
-        if (existingId) {
-          this.logger.warn(
-            `matter-to-deal [${sourceId}]: my_case_id already on deal ${existingId} — linking instead of creating`,
-          );
-          await this.syncRecords.upsert({
-            installationId,
-            objectType: 'deal',
-            hubspotObjectId: existingId,
-            mycaseObjectId: sourceId,
-            payload: dealData as any,
-            direction: 'mc_to_hs',
-          });
-          return this.skip(`Linked to existing HubSpot deal (my_case_id match: ${existingId})`);
-        }
-        const stripped = this.stripHubSpotInvalid(err, dealData as Record<string, unknown>, fieldMismatches);
-        if (!stripped) throw err;
-        created = await this.hubspot.createDeal(installation.hubspotPortalId, installationId, stripped as any);
-      }
-      hubspotId = created!.id;
-      action = 'created';
-      this.logger.log(`Created HubSpot deal ${hubspotId} from MyCase matter ${sourceId}`);
-    } else {
-      try {
-        await this.hubspot.updateDeal(installation.hubspotPortalId, installationId, hubspotId, dealData);
-      } catch (err: any) {
-        const stripped = this.stripHubSpotInvalid(err, dealData as Record<string, unknown>, fieldMismatches);
-        if (!stripped) throw err;
-        await this.hubspot.updateDeal(installation.hubspotPortalId, installationId, hubspotId, stripped as any);
-      }
-      action = 'updated';
+      return this.skip('No linked HubSpot deal — mc_to_hs only updates existing records (create in HubSpot first)');
     }
+
+    try {
+      await this.hubspot.updateDeal(installation.hubspotPortalId, installationId, hubspotId, dealData);
+    } catch (err: any) {
+      const stripped = this.stripHubSpotInvalid(err, dealData as Record<string, unknown>, fieldMismatches);
+      if (!stripped) throw err;
+      await this.hubspot.updateDeal(installation.hubspotPortalId, installationId, hubspotId, stripped as any);
+    }
+    const action = 'updated';
 
     // Associate deal with HubSpot contact on every sync run — idempotent, repairs
     // failed associations from previous runs (e.g. contact wasn't synced yet).
@@ -246,30 +193,6 @@ export class MatterToDealProcessor extends BaseProcessor {
     });
 
     return { success: true, action, destinationId: hubspotId, fieldMismatches, syncedData: dealData as Record<string, unknown> };
-  }
-
-  private extractExistingDealId(err: any): string | null {
-    if (!err?.responseData) return null;
-    const data = err.responseData;
-
-    // Shape 1: { message: "... 12345 already has that value ..." }
-    const msgMatch = (data.message ?? '').match(/(\d+) already has that value/);
-    if (msgMatch) return msgMatch[1];
-
-    // Shape 2: { errors: [{ message, context: { value: ['12345'] } }] }
-    for (const e of data.errors ?? []) {
-      const val = e?.context?.value?.[0];
-      if (val && /^\d+$/.test(val)) return val;
-    }
-
-    // Shape 3: category=DUPLICATE_VALUE in errors array
-    for (const e of data.errors ?? []) {
-      const valMsg: string = e?.message ?? '';
-      const m = valMsg.match(/(\d+) already has that value/);
-      if (m) return m[1];
-    }
-
-    return null;
   }
 
   /**
