@@ -221,9 +221,9 @@ export class MyCaseClientService {
     installationId: string,
     clientId: string,
     data: Partial<McClientInput>,
-  ): Promise<McClient> {
-    return this.call(installationId, (http) =>
-      http.put(`/clients/${clientId}`, data).then((r) => r.data),
+  ): Promise<void> {
+    await this.call(installationId, (http) =>
+      http.put(`/clients/${clientId}`, data).then(() => undefined),
     );
   }
 
