@@ -174,6 +174,7 @@ export class AuthController {
         await Promise.all([
           this.mycase.createWebhookSubscription(installationId, 'case', webhookBase, ['created', 'updated']),
           this.mycase.createWebhookSubscription(installationId, 'client', webhookBase, ['created', 'updated']),
+          this.mycase.createWebhookSubscription(installationId, 'note', webhookBase, ['created', 'updated']),
         ]);
         this.logger.log(`Subscribed MyCase webhooks for installation ${installationId}`);
       } else {

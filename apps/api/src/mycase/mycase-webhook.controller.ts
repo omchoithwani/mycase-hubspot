@@ -38,7 +38,7 @@ export class MyCaseWebhookController {
     const model: string | undefined = body.resource ?? body.model ?? body.object_type;
     const action: string | undefined = body.action ?? body.event;
     const id: string | number | undefined =
-      body.resource_body?.id ?? body.id ?? body.case_id ?? body.contact_id ?? body.object_id;
+      body.resource_body?.id ?? body.id ?? body.note_id ?? body.case_id ?? body.contact_id ?? body.object_id;
 
     if (!id) {
       this.logger.warn(`MyCase webhook: no id in payload — ${JSON.stringify(body)}`);
@@ -61,6 +61,10 @@ export class MyCaseWebhookController {
     } else if (model === 'Client' || model === 'client' || model === 'contact' || body.contact_id) {
       if (action !== 'deleted') {
         await this.enqueue(installationId, 'contact', sourceId);
+      }
+    } else if (model === 'Note' || model === 'note') {
+      if (action !== 'deleted') {
+        await this.enqueue(installationId, 'note', sourceId);
       }
     } else {
       this.logger.warn(`MyCase webhook: unrecognised model="${model}" action="${action}" — skipping`);
