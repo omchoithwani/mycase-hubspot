@@ -512,7 +512,7 @@ export class MyCaseClientService {
 
   async createWebhookSubscription(
     installationId: string,
-    model: 'case' | 'client',
+    model: 'case' | 'client' | 'note',
     url: string,
     actions: Array<'created' | 'updated' | 'deleted'>,
   ): Promise<McWebhookSubscription> {
