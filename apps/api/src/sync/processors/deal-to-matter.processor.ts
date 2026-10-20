@@ -234,6 +234,9 @@ export class DealToMatterProcessor extends BaseProcessor {
           updateData = safe;
         }
       }
+      // Never send clients on update — MyCase's PUT replaces the entire list, which
+      // would strip contacts (prosecutors, opposing counsel) added directly in MyCase.
+      delete (updateData as any).clients;
       try {
         await this.mycase.updateMatter(installationId, mycaseId, updateData);
       } catch (err: any) {
