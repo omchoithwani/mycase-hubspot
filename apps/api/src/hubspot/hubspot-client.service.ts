@@ -101,13 +101,21 @@ export class HubSpotClientService {
     contactId: string,
     properties?: string[],
   ): Promise<HsContact> {
-    const props = properties?.length
-      ? properties.join(',')
-      : 'email,firstname,lastname,phone,company,lifecyclestage,my_case_id';
+    if (properties?.length) {
+      // Use batch/read (POST) so properties go in the body, not the URL — avoids 414
+      return this.call(portalId, installationId, (http) =>
+        http
+          .post('/crm/v3/objects/contacts/batch/read', {
+            inputs: [{ id: contactId }],
+            properties,
+          })
+          .then((r) => r.data.results?.[0]),
+      );
+    }
     return this.call(portalId, installationId, (http) =>
       http
         .get(`/crm/v3/objects/contacts/${contactId}`, {
-          params: { properties: props },
+          params: { properties: 'email,firstname,lastname,phone,company,lifecyclestage,my_case_id' },
         })
         .then((r) => r.data),
     );
@@ -179,13 +187,21 @@ export class HubSpotClientService {
     dealId: string,
     properties?: string[],
   ): Promise<HsDeal> {
-    const props = properties?.length
-      ? properties.join(',')
-      : 'dealname,amount,closedate,dealstage,pipeline,my_case_id';
+    if (properties?.length) {
+      // Use batch/read (POST) so properties go in the body, not the URL — avoids 414
+      return this.call(portalId, installationId, (http) =>
+        http
+          .post('/crm/v3/objects/deals/batch/read', {
+            inputs: [{ id: dealId }],
+            properties,
+          })
+          .then((r) => r.data.results?.[0]),
+      );
+    }
     return this.call(portalId, installationId, (http) =>
       http
         .get(`/crm/v3/objects/deals/${dealId}`, {
-          params: { properties: props },
+          params: { properties: 'dealname,amount,closedate,dealstage,pipeline,my_case_id' },
         })
         .then((r) => r.data),
     );
